@@ -84,7 +84,7 @@ elif st.session_state.step == 4:
     total_plans = sum(l['price'] for l in st.session_state.lines)
     total_devices = sum(l['dev'] for l in st.session_state.lines)
     total_discounts = sum(l['disc'] for l in st.session_state.lines)
-    econ_adjustment = st.session_state.num_lines * 2.98 # 
+    econ_adjustment = st.session_state.num_lines * 2.98 
     grand_total = (total_plans + total_devices + econ_adjustment) - total_discounts
 
     # Preview Card
@@ -101,7 +101,7 @@ elif st.session_state.step == 4:
         pdf = FPDF()
         pdf.add_page()
         
-        # Header - Mocking Verizon style [cite: 12, 31]
+        # Header
         pdf.set_font("helvetica", "B", 16)
         pdf.cell(0, 10, "verizon business", ln=True)
         pdf.set_font("helvetica", "", 10)
@@ -116,7 +116,7 @@ elif st.session_state.step == 4:
         pdf.cell(0, 5, st.session_state.biz_name, ln=True)
         pdf.ln(10)
 
-        # Table Headers [cite: 35, 36]
+        # Table
         with pdf.table(col_widths=(10, 50, 30, 30, 30), text_align="CENTER") as table:
             row = table.row()
             row.cell("Line")
@@ -133,17 +133,29 @@ elif st.session_state.step == 4:
                 row.cell(f"${line['dev']:.2f}")
                 row.cell(f"-${line['disc']:.2f}")
 
-        # Summary Totals [cite: 24, 71]
         pdf.ln(10)
         pdf.set_font("helvetica", "B", 12)
         pdf.cell(140, 7, "Total Due Monthly:", align="R")
         pdf.cell(40, 7, f"${grand_total:,.2f}", align="R", ln=True)
         
-        pdf.set_font("helvetica", "", 9)
-        pdf.set_text_color(100, 100, 100)
-        pdf.multi_cell(0, 5, "\n*Additional charges, taxes, and fees apply. This quote is for estimating purposes only.") # [cite: 77, 81]
-        
+        # Returns the PDF as a byte string
         return pdf.output()
+
+    # Generate the bytes once
+    pdf_output = generate_pdf()
+
+    # Pass the raw bytes directly to the download button
+    st.download_button(
+        label="📥 Export to PDF",
+        data=bytes(pdf_output), # Ensure it is cast to bytes
+        file_name=f"Quote_{st.session_state.biz_name.replace(' ', '_')}.pdf",
+        mime="application/pdf"
+    )
+    
+    if st.button("Start New Quote"):
+        st.session_state.step = 1
+        st.session_state.lines = []
+        st.rerun()
 
     pdf_bytes = generate_pdf()
     st.download_button(
