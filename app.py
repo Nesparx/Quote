@@ -5,7 +5,7 @@ import datetime
 # --- CONFIGURATION & SESSION STATE ---
 st.set_page_config(page_title="Verizon Quote Generator", layout="centered")
 
-# Basic Plan Pricing Placeholder (To be updated with your specific pricing later)
+# Basic Plan Pricing Placeholder
 PLAN_PRICING = {
     "My Biz Plan": 34.00,
     "Business Unlimited Plus": 45.00,
@@ -25,7 +25,6 @@ if st.session_state.step == 1:
         num = st.number_input("How many lines are we working with?", min_value=1, step=1, value=1)
         if st.form_submit_button("Next"):
             st.session_state.num_lines = num
-            # Initialize/Reset lines
             st.session_state.lines = [{"plan": "My Biz Plan", "features": [], "addons": [], "discounts": [], "dev_pay": 0.0} for _ in range(num)]
             st.session_state.step = 2
             st.rerun()
@@ -54,7 +53,6 @@ elif st.session_state.step == 3:
     
     FEATURE_CATALOG = {"Total Mobile Protection": 18.00, "Wireless Phone Protection": 7.98}
     ADDON_CATALOG = {"Premium Network Experience": 10.00, "Unlimited Verizon Cloud": 10.00, "50 GB Mobile Hotspot": 5.00}
-    # Discount values: fixed dollar amounts or the 15% flag
     DISCOUNT_CATALOG = {"Military Discount": 5.00, "Autopay": 5.00, "Intro New Line Discount (15%)": "15_percent"}
 
     for i in range(st.session_state.num_lines):
@@ -82,9 +80,9 @@ elif st.session_state.step == 3:
 elif st.session_state.step == 4:
     st.header("Step 4: Sale Information")
     with st.form("step4"):
-        [cite_start]biz = st.text_input("Business Name", value="STRONGHOLD ENGINEERING INC") # [cite: 3]
-        [cite_start]rep = st.text_input("Sales Rep", value="Noah Braun") # [cite: 7]
-        [cite_start]dt = st.date_input("Quote Date", datetime.date.today()) # [cite: 2]
+        biz = st.text_input("Business Name", value="STRONGHOLD ENGINEERING INC")
+        rep = st.text_input("Sales Rep", value="Noah Braun")
+        dt = st.date_input("Quote Date", datetime.date.today())
         if st.form_submit_button("Preview Quote"):
             st.session_state.biz_name, st.session_state.rep_name, st.session_state.quote_date = biz, rep, dt
             st.session_state.step = 5
@@ -101,7 +99,7 @@ elif st.session_state.step == 5:
     ADDON_CATALOG = {"Premium Network Experience": 10.00, "Unlimited Verizon Cloud": 10.00, "50 GB Mobile Hotspot": 5.00}
     
     total_monthly = 0
-    [cite_start]econ_adjustment = st.session_state.num_lines * 2.98 # [cite: 85, 86]
+    econ_adjustment = st.session_state.num_lines * 2.98 
     
     for line in st.session_state.lines:
         base_price = PLAN_PRICING.get(line['plan'], 0)
@@ -109,12 +107,11 @@ elif st.session_state.step == 5:
         line_total += sum(FEATURE_CATALOG[f] for f in line['features'])
         line_total += sum(ADDON_CATALOG[a] for a in line['addons'])
         
-        # Apply Discounts
         for d in line['discounts']:
-            if d == "Intro New Line Discount (15%)":
-                line_total -= (base_price * 0.15) # 15% off base plan price
+            if "15%" in d:
+                line_total -= (base_price * 0.15)
             else:
-                line_total -= 5.0 # Military/Autopay fixed $5
+                line_total -= 5.0
         
         total_monthly += line_total
     
@@ -126,11 +123,11 @@ elif st.session_state.step == 5:
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("helvetica", "B", 16)
-        [cite_start]pdf.cell(0, 10, "verizon business", ln=True) # [cite: 12]
+        pdf.cell(0, 10, "verizon business", ln=True)
         pdf.set_font("helvetica", "", 10)
-        [cite_start]pdf.cell(0, 5, f"Prepared for: {st.session_state.biz_name}", ln=True) # [cite: 3]
-        [cite_start]pdf.cell(0, 5, f"Prepared by: {st.session_state.rep_name}", ln=True) # [cite: 6]
-        [cite_start]pdf.cell(0, 5, f"Date: {st.session_state.quote_date}", ln=True) # [cite: 2]
+        pdf.cell(0, 5, f"Prepared for: {st.session_state.biz_name}", ln=True)
+        pdf.cell(0, 5, f"Prepared by: {st.session_state.rep_name}", ln=True)
+        pdf.cell(0, 5, f"Date: {st.session_state.quote_date}", ln=True)
         pdf.ln(10)
         
         with pdf.table(col_widths=(10, 40, 60, 40), text_align="LEFT") as table:
@@ -141,12 +138,12 @@ elif st.session_state.step == 5:
                 r.cell(str(idx+1))
                 r.cell(line['plan'])
                 r.cell(", ".join(line['features'] + line['addons']))
-                r.cell("Detail Pending...") 
+                r.cell("Pending...") 
         
         pdf.ln(5)
-        [cite_start]pdf.cell(0, 10, f"Economic Adjustment Charge: ${econ_adjustment:,.2f}", ln=True) # [cite: 24, 85]
+        pdf.cell(0, 10, f"Economic Adjustment Charge: ${econ_adjustment:,.2f}", ln=True)
         pdf.set_font("helvetica", "B", 12)
-        [cite_start]pdf.cell(0, 10, f"Total Due Monthly: ${grand_total:,.2f}", ln=True) # [cite: 71]
+        pdf.cell(0, 10, f"Total Due Monthly: ${grand_total:,.2f}", ln=True)
         return pdf.output()
 
     st.download_button("📥 Export to PDF", data=bytes(generate_pdf()), file_name="Quote.pdf", mime="application/pdf")
