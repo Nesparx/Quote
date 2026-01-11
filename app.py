@@ -101,22 +101,23 @@ elif st.session_state.step == 4:
         pdf = FPDF()
         pdf.add_page()
         
-        # Header
+        # Header - Mocking Verizon style [cite: 12]
         pdf.set_font("helvetica", "B", 16)
         pdf.cell(0, 10, "verizon business", ln=True)
         pdf.set_font("helvetica", "", 10)
+        # Quote ID and Created date [cite: 8, 2]
         pdf.cell(0, 5, f"Quote ID: {datetime.datetime.now().strftime('%Y%m%d%H%M')}-Q", ln=True)
         pdf.cell(0, 5, f"Created: {st.session_state.quote_date}", ln=True)
         pdf.ln(5)
         
-        # Customer Info
+        # Customer Info [cite: 3]
         pdf.set_font("helvetica", "B", 11)
         pdf.cell(0, 6, "Prepared for:", ln=True)
         pdf.set_font("helvetica", "", 11)
         pdf.cell(0, 5, st.session_state.biz_name, ln=True)
         pdf.ln(10)
 
-        # Table
+        # Table of Details
         with pdf.table(col_widths=(10, 50, 30, 30, 30), text_align="CENTER") as table:
             row = table.row()
             row.cell("Line")
@@ -133,34 +134,21 @@ elif st.session_state.step == 4:
                 row.cell(f"${line['dev']:.2f}")
                 row.cell(f"-${line['disc']:.2f}")
 
+        # Summary [cite: 23]
         pdf.ln(10)
         pdf.set_font("helvetica", "B", 12)
         pdf.cell(140, 7, "Total Due Monthly:", align="R")
         pdf.cell(40, 7, f"${grand_total:,.2f}", align="R", ln=True)
         
-        # Returns the PDF as a byte string
         return pdf.output()
 
     # Generate the bytes once
     pdf_output = generate_pdf()
 
-    # Pass the raw bytes directly to the download button
+    # Final Buttons (Ensure these only appear ONCE)
     st.download_button(
         label="📥 Export to PDF",
-        data=bytes(pdf_output), # Ensure it is cast to bytes
-        file_name=f"Quote_{st.session_state.biz_name.replace(' ', '_')}.pdf",
-        mime="application/pdf"
-    )
-    
-    if st.button("Start New Quote"):
-        st.session_state.step = 1
-        st.session_state.lines = []
-        st.rerun()
-
-    pdf_bytes = generate_pdf()
-    st.download_button(
-        label="📥 Export to PDF",
-        data=pdf_bytes,
+        data=bytes(pdf_output),
         file_name=f"Quote_{st.session_state.biz_name.replace(' ', '_')}.pdf",
         mime="application/pdf"
     )
