@@ -3,20 +3,12 @@ from fpdf import FPDF
 import datetime
 
 # --- INITIALIZATION ---
-if 'step' not in st.session_state:
-    st.session_state.step = 1
-if 'lines' not in st.session_state:
-    st.session_state.lines = []
-if 'autopay' not in st.session_state:
-    st.session_state.autopay = False
-if 'military' not in st.session_state:
-    st.session_state.military = False
-if 'joint_offer' not in st.session_state:
-    st.session_state.joint_offer = False
-if 'tmp_multi' not in st.session_state:
-    st.session_state.tmp_multi = "None"
-if 'whole_office' not in st.session_state:
-    st.session_state.whole_office = False
+if 'step' not in st.session_state: st.session_state.step = 1
+if 'lines' not in st.session_state: st.session_state.lines = []
+# Ensure account-level keys exist to prevent AttributeErrors
+for key in ['autopay', 'military', 'joint_offer', 'tmp_multi', 'whole_office']:
+    if key not in st.session_state:
+        st.session_state[key] = False if key != 'tmp_multi' else "None"
 
 # --- DATA CATALOGS ---
 SMARTPHONE_TIERS = {
@@ -36,10 +28,14 @@ INTERNET = {
     "10 MBPS": 69.0, "25 MBPS": 99.0, "Unl 25 MBPS": 69.0, "50 MBPS": 100.0, 
     "100 MBPS": 69.0, "200 MBPS": 99.0, "400 MBPS": 199.0, "Backup 1GB LTE": 20.0, "Backup 3GB LTE": 30.0
 }
-ADDONS = {"Premium Network": 10.0, "Enhanced Video": 5.0, "Google Workspace": 16.0, "Int. Conn": 10.0, "50GB Hotspot": 5.0}
-SINGLE_PROT = {"TMP Single (T1)": 18.0, "TMP Single (T2)": 15.0, "TEC (T1)": 13.0, "WPP (T1)": 8.0}
+ADDONS = {"Premium Network Experience": 10.0, "Enhanced Video Calling": 5.0, "Google Workspace": 16.0, "International Connectivity": 10.0, "50 GB Mobile Hotspot": 5.0}
+SINGLE_PROT = {"TMP Single (Tier 1)": 18.0, "TMP Single (Tier 2)": 15.0, "TEC (Tier 1)": 13.0, "WPP (Tier 1)": 8.0}
 VBIS_PROT = {"None": 0.0, "VBIS Plus": 10.0, "VBIS Preferred": 20.0}
-MULTI_PROT = {"TMP Multi 3-10": 49.0, "TMP Multi 11-24": 149.0}
+MULTI_PROT_DATA = [
+    {"name": "TMP Multi 3-10 Lines", "min": 3, "price": 49.0},
+    {"name": "TMP Multi 11-24 Lines", "min": 11, "price": 149.0},
+    {"name": "TMP Multi 25-49 Lines", "min": 25, "price": 299.0}
+]
 
 st.set_page_config(page_title="Verizon Quote Wizard", layout="wide")
 
@@ -56,20 +52,16 @@ def get_totals():
         plan = l.get('plan', 'My Biz')
         dtype = l.get('type', 'Smartphone')
         
-        # Base
         if plan in SMARTPHONE_TIERS: base = SMARTPHONE_TIERS[plan]['prices'][tier_idx]
         elif plan in SMARTPHONE_STATIC: base = SMARTPHONE_STATIC[plan]['price']
         elif dtype == "Internet": base = INTERNET.get(plan, 0.0)
         else: base = 20.0
 
-        # Joint Offer
         if st.session_state.joint_offer and dtype == "Internet" and plan in STANDARD_INTERNET:
             base -= 30.0
 
-        # Autopay
         if st.session_state.autopay and plan in SMARTPHONE_TIERS: base -= 5.0
         
-        # Addons & Tier
         extras = sum(ADDONS[f] for f in l.get('features', []))
         if plan == "My Biz":
             if extras >= 20: tier = "Pro"
@@ -79,10 +71,8 @@ def get_totals():
         else:
             tier = SMARTPHONE_TIERS.get(plan, SMARTPHONE_STATIC.get(plan, {"tier": "Base"}))['tier']
 
-        # Protection
         p_price = VBIS_PROT.get(l.get('vbis', 'None'), 0.0) if dtype == "Internet" else SINGLE_PROT.get(l.get('protection', 'None'), 0.0)
 
-        # Final Line Math
         disc = 0
         if l.get('intro_disc'): disc += (base * 0.15)
         if st.session_state.military and dtype == "Smartphone": disc += 5.0
@@ -92,10 +82,10 @@ def get_totals():
         account_mrc += total
 
     if st.session_state.tmp_multi != "None":
-        account_mrc += MULTI_PROT.get(st.session_state.tmp_multi, 0)
+        m_price = next((item['price'] for item in MULTI_PROT_DATA if item['name'] == st.session_state.tmp_multi), 0)
+        account_mrc += m_price
     if st.session_state.whole_office: account_mrc += 55.0
     account_mrc += (len(lines) * 2.98)
-    
     return line_details, account_mrc
 
 # --- SIDEBAR ---
@@ -111,47 +101,65 @@ if st.session_state.step > 1:
 # --- STEPS ---
 if st.session_state.step == 1:
     st.header("Step 1: Quantity")
-    num = st.number_input("Total lines?", min_value=1, value=1)
-    if st.button("Start"):
+    num = st.number_input("How many total devices/lines?", min_value=1, value=1)
+    if st.button("Start Quote"):
         st.session_state.num_lines = num
         st.session_state.lines = [{"type": "Smartphone", "plan": "My Biz", "features": [], "protection": "None", "vbis": "None", "dev_pay": 0.0, "intro_disc": False} for _ in range(num)]
         st.session_state.step = 2; st.rerun()
 
 elif st.session_state.step == 2:
-    st.header("Step 2: Plans")
+    st.header("Step 2: Assign Plans")
     for i in range(st.session_state.num_lines):
-        with st.expander(f"Line {i+1}", expanded=True):
-            st.session_state.lines[i]['type'] = st.selectbox("Category", ["Smartphone", "Internet", "Tablet"], key=f"t_sel_{i}")
-            if st.session_state.lines[i]['type'] == "Smartphone": opts = list(SMARTPHONE_TIERS.keys()) + list(SMARTPHONE_STATIC.keys())
-            elif st.session_state.lines[i]['type'] == "Internet": opts = list(INTERNET.keys())
-            else: opts = ["Start", "Pro"]
-            st.session_state.lines[i]['plan'] = st.selectbox("Plan", opts, key=f"p_sel_{i}")
+        with st.expander(f"Line {i+1} Setup", expanded=True):
+            st.session_state.lines[i]['type'] = st.selectbox("Device Category", ["Smartphone", "Internet", "Tablet", "Watch"], key=f"t_sel_{i}")
+            dtype = st.session_state.lines[i]['type']
+            if dtype == "Smartphone": opts = list(SMARTPHONE_TIERS.keys()) + list(SMARTPHONE_STATIC.keys())
+            elif dtype == "Internet": opts = list(INTERNET.keys())
+            elif dtype == "Tablet": opts = ["Start", "Pro"]
+            else: opts = ["Standalone", "Numbershare", "Gizmo"]
+            st.session_state.lines[i]['plan'] = st.selectbox("Select Plan", opts, key=f"p_sel_{i}")
     if st.button("Next"): st.session_state.step = 3; st.rerun()
 
 elif st.session_state.step == 3:
     st.header("Step 3: Account Options")
-    st.session_state.autopay = st.toggle("Autopay", value=st.session_state.autopay)
-    st.session_state.military = st.toggle("Military", value=st.session_state.military)
-    st.session_state.joint_offer = st.toggle("Joint Offer", value=st.session_state.joint_offer)
-    st.session_state.tmp_multi = st.selectbox("Multi-Device Protection", ["None"] + list(MULTI_PROT.keys()), index=0)
-    st.session_state.whole_office = st.toggle("Whole Office Protect", value=st.session_state.whole_office)
+    st.session_state.autopay = st.toggle("Autopay & Paper-Free Discount ($5 off eligible smartphone lines)", value=st.session_state.autopay)
+    st.session_state.military = st.toggle("Military / Veteran Discount ($5 off all smartphone lines)", value=st.session_state.military)
+    
+    # Joint Offer Logic
+    has_sm = any(l['type'] == "Smartphone" for l in st.session_state.lines)
+    has_int = any(l['type'] == "Internet" and l['plan'] in STANDARD_INTERNET for l in st.session_state.lines)
+    if has_sm and has_int:
+        st.session_state.joint_offer = st.toggle("Business Unlimited Joint Offer ($30 off Internet)", value=st.session_state.joint_offer)
+    else: st.session_state.joint_offer = False
+
+    # Multi-Device Gatekeeper
+    eligible_count = sum(1 for l in st.session_state.lines if l['type'] in ["Smartphone", "Tablet", "Watch"] or "Jetpack" in str(l['plan']))
+    multi_opts = ["None"]
+    for bracket in MULTI_PROT_DATA:
+        if eligible_count >= bracket['min']: multi_opts.append(bracket['name'])
+    
+    st.session_state.tmp_multi = st.selectbox("Multi-Device Protection (3+ Eligible Lines)", multi_opts, index=0)
+    st.session_state.whole_office = st.toggle("Whole Office Protect ($55.00/mo)", value=st.session_state.whole_office)
     if st.button("Next"): st.session_state.step = 4; st.rerun()
 
 elif st.session_state.step == 4:
-    st.header("Step 4: Features")
+    st.header("Step 4: Features & Line Config")
     l_info, _ = get_totals()
     for i in range(st.session_state.num_lines):
         l = st.session_state.lines[i]
         with st.expander(f"Line {i+1} ({l['plan']}) - {l_info[i]['tier']} Tier", expanded=(i==0)):
             if l['type'] == "Internet":
-                l['vbis'] = st.selectbox("Security", list(VBIS_PROT.keys()), key=f"vbis_sel_{i}")
+                l['vbis'] = st.selectbox("Internet Security (VBIS)", list(VBIS_PROT.keys()), key=f"vbis_sel_{i}")
             else:
-                l['protection'] = st.selectbox("Protection", ["None"] + list(SINGLE_PROT.keys()), key=f"pr_sel_{i}")
+                if st.session_state.tmp_multi == "None":
+                    l['protection'] = st.selectbox("Single Line Protection", ["None"] + list(SINGLE_PROT.keys()), key=f"pr_sel_{i}")
+                else: st.caption("✅ Covered by Account Multi-Device Protection")
             
             if l['plan'] == "My Biz":
                 l['features'] = [f for f in ADDONS if st.checkbox(f"{f} (${ADDONS[f]})", key=f"a_sel_{i}_{f}")]
-                l['intro_disc'] = st.checkbox("15% Intro Discount", key=f"id_sel_{i}")
+                if not st.session_state.military:
+                    l['intro_disc'] = st.checkbox("Apply 15% Intro New Line Discount", key=f"id_sel_{i}")
             
-            l['dev_pay'] = st.number_input("Device Payment", min_value=0.0, key=f"dp_sel_{i}")
+            l['dev_pay'] = st.number_input("Monthly Device Payment ($)", min_value=0.0, key=f"dp_sel_{i}")
 
     if st.button("Finish"): st.session_state.step = 5; st.rerun()
