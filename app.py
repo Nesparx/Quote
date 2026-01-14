@@ -31,26 +31,21 @@ TABLETS = {"Start": 20.0, "Pro": 40.0}
 WATCHES = {"Standalone": 15.0, "Numbershare": 15.0, "Gizmo": 5.0}
 OTHER = {"Camera": 25.0, "Jetpack Plus": 45.0, "Jetpack Pro": 75.0, "One Talk Mobile Client": 20.0, "One Talk Auto Receptionist": 20.0}
 
-# MY BIZ ADD-ONS (Existing)
 ADDONS = {
     "Premium Network Experience": 10.0, "Enhanced Video Calling": 5.0, "Google Workspace": 16.0, "International Connectivity": 10.0,
     "Int. LD (Asia Pacific)": 5.0, "Int. LD (Europe)": 5.0, "Int. LD (Latin America)": 5.0, "Business Mobile Secure Plus": 5.0,
     "Verizon Internet Security": 0.0, "50 GB Mobile Hotspot": 5.0, "Unlimited Cloud Storage": 10.0
 }
-
-# NEW SMARTPHONE FEATURES (Separate from Add-ons)
 SMARTPHONE_FEATURES = {
     "International Monthly": {"code": "1949", "price": 100.0},
     "International One Month": {"code": "1948", "price": 100.0},
     "Verizon Roadside Assistance": {"code": "88041", "price": 3.0},
     "Call Filter Plus": {"code": "83439", "price": 3.0},
-    "VBMIS (Paid)": {"code": "90530", "price": 2.0} # Only for Non-MyBiz
+    "VBMIS (Paid)": {"code": "90530", "price": 2.0}
 }
-
 SINGLE_PROT = {
     "TMP Single (Tier 1)": 18.0, "TMP Single (Tier 2)": 15.0, "TEC (Tier 1)": 13.0, "TEC (Tier 2)": 9.0, "WPP (Tier 1)": 8.0, "WPP (Tier 2)": 5.0
 }
-# Updated VBIS with new SPOs (Logic uses Key to lookup price)
 VBIS_PROT = {
     "None": {"code": "", "price": 0.0},
     "VBIS Plus": {"code": "90273", "price": 10.0},
@@ -85,16 +80,12 @@ def get_totals():
         elif dtype == "Watch": base = WATCHES.get(plan, 0.0)
         else: base = OTHER.get(plan, 0.0)
 
-        # Joint Offer
         if st.session_state.joint_offer and dtype == "Internet" and plan in STANDARD_INTERNET:
             base -= 30.0
 
-        # Autopay
         if st.session_state.autopay and plan in SMARTPHONE_TIERS: base -= 5.0
         
-        # Add-ons (My Biz) & Features (Generic)
         extras = sum(ADDONS[f] for f in l.get('features', []))
-        # Add new Smartphone Features cost
         extras += sum(SMARTPHONE_FEATURES[f]['price'] for f in l.get('sp_features', []))
 
         if plan == "My Biz":
@@ -105,13 +96,11 @@ def get_totals():
         else:
             tier = SMARTPHONE_TIERS.get(plan, SMARTPHONE_STATIC.get(plan, {"tier": "Base"})).get('tier', 'Base')
 
-        # Protection
         if dtype == "Internet":
             p_price = VBIS_PROT.get(l.get('vbis', 'None'), {"price": 0.0})['price']
         else:
             p_price = SINGLE_PROT.get(l.get('protection', 'None'), 0.0)
 
-        # Discounts
         disc = 0
         if l.get('intro_disc'): disc += (base * 0.15)
         if st.session_state.military and dtype == "Smartphone": disc += 5.0
@@ -120,13 +109,82 @@ def get_totals():
         line_details.append({"total": total, "tier": tier})
         account_mrc += total
 
-    # Account Level
     if st.session_state.tmp_multi != "None":
         m_price = next((item['price'] for item in MULTI_PROT_DATA if item['name'] == st.session_state.tmp_multi), 0)
         account_mrc += m_price
-    if st.session_state.whole_office: account_mrc += 55.0 # SPO 3490
+    if st.session_state.whole_office: account_mrc += 55.0
     account_mrc += (len(lines) * 2.98)
     return line_details, account_mrc
+
+# --- PDF GENERATOR ---
+def generate_pdf(biz_name, rep_name, one_time_total):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("helvetica", "B", 16)
+    pdf.cell(0, 10, "verizon business", ln=True)
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(0, 5, f"Prepared for: {biz_name}", ln=True)
+    pdf.cell(0, 5, f"Prepared by: {rep_name}", ln=True)
+    pdf.cell(0, 5, f"Date: {datetime.date.today()}", ln=True)
+    pdf.ln(10)
+
+    # ONE TIME CHARGES
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(0, 8, "Due Today", ln=True)
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(150, 6, "Estimated Taxes, Fees & Setup", border=1)
+    pdf.cell(30, 6, f"${one_time_total:,.2f}", border=1, ln=True, align="R")
+    pdf.ln(5)
+
+    # MONTHLY CHARGES
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(0, 8, "Due Monthly", ln=True)
+    
+    # Header
+    pdf.set_font("helvetica", "B", 9)
+    pdf.cell(10, 8, "#", 1, 0, 'C')
+    pdf.cell(50, 8, "Plan", 1, 0, 'L')
+    pdf.cell(90, 8, "Features / Protection", 1, 0, 'L')
+    pdf.cell(30, 8, "Line Total", 1, 1, 'R')
+    
+    # Lines
+    pdf.set_font("helvetica", "", 8)
+    l_info, total_monthly = get_totals()
+    for idx, l in enumerate(st.session_state.lines):
+        pdf.cell(10, 8, str(idx+1), 1, 0, 'C')
+        pdf.cell(50, 8, l['plan'], 1, 0, 'L')
+        
+        # Build feature string
+        feats = l.get('features', []) + l.get('sp_features', [])
+        if l.get('protection') != "None": feats.append(l['protection'])
+        if l.get('vbis') != "None": feats.append(l['vbis'])
+        feat_str = ", ".join(feats) if feats else "-"
+        
+        # Truncate feature string if too long
+        if len(feat_str) > 60: feat_str = feat_str[:57] + "..."
+        
+        pdf.cell(90, 8, feat_str, 1, 0, 'L')
+        pdf.cell(30, 8, f"${l_info[idx]['total']:.2f}", 1, 1, 'R')
+
+    # Account Level
+    if st.session_state.tmp_multi != "None":
+        m_price = next((item['price'] for item in MULTI_PROT_DATA if item['name'] == st.session_state.tmp_multi), 0)
+        pdf.cell(150, 8, f"Account: {st.session_state.tmp_multi}", 1, 0, 'L')
+        pdf.cell(30, 8, f"${m_price:.2f}", 1, 1, 'R')
+    
+    if st.session_state.whole_office:
+        pdf.cell(150, 8, "Account: Whole Office Protect", 1, 0, 'L')
+        pdf.cell(30, 8, "$55.00", 1, 1, 'R')
+        
+    pdf.cell(150, 8, f"Economic Adjustment Charge (x{len(st.session_state.lines)})", 1, 0, 'L')
+    pdf.cell(30, 8, f"${len(st.session_state.lines)*2.98:.2f}", 1, 1, 'R')
+
+    # Grand Total
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(150, 10, "Total Monthly Recurring", 0, 0, 'R')
+    pdf.cell(30, 10, f"${total_monthly:,.2f}", 0, 1, 'R')
+    
+    return pdf.output()
 
 # --- SIDEBAR ---
 if st.session_state.step > 1:
@@ -144,7 +202,6 @@ if st.session_state.step == 1:
     num = st.number_input("Total devices/lines?", min_value=1, value=1)
     if st.button("Start Quote"):
         st.session_state.num_lines = num
-        # Initialize features lists
         st.session_state.lines = [{"type": "Smartphone", "plan": "My Biz", "features": [], "sp_features": [], "protection": "None", "vbis": "None", "dev_pay": 0.0, "intro_disc": False} for _ in range(num)]
         st.session_state.step = 2; st.rerun()
 
@@ -167,14 +224,12 @@ elif st.session_state.step == 3:
     st.session_state.autopay = st.toggle("Autopay & Paper-Free Discount ($5 off eligible smartphone lines)", value=st.session_state.autopay)
     st.session_state.military = st.toggle("Military / Veteran Discount ($5 off all smartphone lines)", value=st.session_state.military)
     
-    # Joint Offer Logic
     has_sm = any(l['type'] == "Smartphone" for l in st.session_state.lines)
     has_int = any(l['type'] == "Internet" and l['plan'] in STANDARD_INTERNET for l in st.session_state.lines)
     if has_sm and has_int:
         st.session_state.joint_offer = st.toggle("Business Unlimited Joint Offer ($30 off Internet)", value=st.session_state.joint_offer)
     else: st.session_state.joint_offer = False
 
-    # Multi-Device Gatekeeper
     eligible_count = sum(1 for l in st.session_state.lines if l['type'] in ["Smartphone", "Tablet", "Watch"] or "Jetpack" in str(l['plan']))
     multi_opts = ["None"]
     for bracket in MULTI_PROT_DATA:
@@ -190,16 +245,13 @@ elif st.session_state.step == 4:
     for i in range(st.session_state.num_lines):
         l = st.session_state.lines[i]
         with st.expander(f"Line {i+1} ({l['plan']}) - {l_info[i]['tier']} Tier", expanded=(i==0)):
-            # 1. INTERNET SECURITY
             if l['type'] == "Internet":
                 l['vbis'] = st.selectbox("Internet Security (VBIS)", list(VBIS_PROT.keys()), key=f"vbis_sel_{i}")
-            # 2. STANDARD PROTECTION
             else:
                 if st.session_state.tmp_multi == "None":
                     l['protection'] = st.selectbox("Single Line Protection", ["None"] + list(SINGLE_PROT.keys()), key=f"pr_sel_{i}")
                 else: st.caption("✅ Covered by Account Multi-Device Protection")
             
-            # 3. MY BIZ ADD-ONS
             if l['plan'] == "My Biz":
                 st.markdown("---")
                 st.caption("My Biz Add-ons (Calculates Tier)")
@@ -207,25 +259,44 @@ elif st.session_state.step == 4:
                 if not st.session_state.military:
                     l['intro_disc'] = st.checkbox("Apply 15% Intro New Line Discount", key=f"id_sel_{i}")
 
-            # 4. SMARTPHONE FEATURES (SEPARATE SECTION)
             if l['type'] == "Smartphone":
                 st.markdown("---")
                 st.caption("Smartphone Features")
-                
-                # Determine available features
                 avail_feats = ["International Monthly", "International One Month", "Verizon Roadside Assistance", "Call Filter Plus"]
                 if l['plan'] != "My Biz":
-                    avail_feats.append("VBMIS (Paid)") # Only show paid VBMIS if NOT My Biz
-                
+                    avail_feats.append("VBMIS (Paid)")
                 l['sp_features'] = [f for f in avail_feats if st.checkbox(f"{f} (${SMARTPHONE_FEATURES[f]['price']})", key=f"sf_sel_{i}_{f}")]
             
             st.markdown("---")
             l['dev_pay'] = st.number_input("Monthly Device Payment ($)", min_value=0.0, key=f"dp_sel_{i}")
 
-    if st.button("Finish"): st.session_state.step = 5; st.rerun()
+    if st.button("Review & Export"): st.session_state.step = 5; st.rerun()
 
 elif st.session_state.step == 5:
-    st.header("Final Quote")
-    _, total = get_totals()
-    st.metric("Total Monthly", f"${total:,.2f}")
-    if st.button("New Quote"): st.session_state.step = 1; st.session_state.lines = []; st.rerun()
+    st.header("Step 5: Finalize Quote")
+    
+    # 1. Sale Information
+    with st.container(border=True):
+        st.subheader("Sale Details")
+        biz_name = st.text_input("Business Name", "Stronghold Engineering Inc")
+        rep_name = st.text_input("Representative Name", "Noah Braun")
+        
+    # 2. One-Time Charges (Due Today)
+    with st.container(border=True):
+        st.subheader("Due Today Charges")
+        c1, c2 = st.columns(2)
+        taxes = c1.number_input("Estimated Taxes ($)", 0.0)
+        setup = c2.number_input("One-Time Setup/Install Fees ($)", 0.0)
+        st.caption(f"Total Due Today: ${taxes+setup:,.2f}")
+
+    # 3. Monthly Summary
+    l_info, total = get_totals()
+    st.subheader(f"Total Due Monthly: ${total:,.2f}")
+
+    # 4. Generate PDF
+    if st.button("Generate PDF Quote"):
+        pdf_bytes = generate_pdf(biz_name, rep_name, taxes+setup)
+        st.download_button("📥 Download PDF", data=bytes(pdf_bytes), file_name="quote.pdf", mime="application/pdf")
+    
+    if st.button("Start New Quote"): 
+        st.session_state.step = 1; st.session_state.lines = []; st.rerun()
