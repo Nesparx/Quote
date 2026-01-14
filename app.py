@@ -117,7 +117,7 @@ def get_totals():
     return line_details, account_mrc
 
 # --- PDF GENERATOR ---
-def generate_pdf(biz_name, rep_name, one_time_total):
+def generate_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_data):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("helvetica", "B", 16)
@@ -128,62 +128,81 @@ def generate_pdf(biz_name, rep_name, one_time_total):
     pdf.cell(0, 5, f"Date: {datetime.date.today()}", ln=True)
     pdf.ln(10)
 
-    # ONE TIME CHARGES
+    # 1. DUE TODAY SECTION
     pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 8, "Due Today", ln=True)
+    pdf.cell(0, 8, "Due Today (Estimated Out The Door)", ln=True)
     pdf.set_font("helvetica", "", 10)
-    pdf.cell(150, 6, "Estimated Taxes, Fees & Setup", border=1)
-    pdf.cell(30, 6, f"${one_time_total:,.2f}", border=1, ln=True, align="R")
+    
+    # Taxes
+    pdf.cell(140, 6, f"Estimated Sales Tax ({due_today_data['tax_rate']}%) on Devices & Accessories", 1)
+    pdf.cell(40, 6, f"${due_today_data['tax_amt']:,.2f}", 1, 1, 'R')
+    
+    # Setup / Bundles
+    if due_today_data['setup_cost'] > 0:
+        pdf.cell(140, 6, "Setup & Go / Service Charges", 1)
+        pdf.cell(40, 6, f"${due_today_data['setup_cost']:,.2f}", 1, 1, 'R')
+    if due_today_data['bundle_cost'] > 0:
+        pdf.cell(140, 6, "Bundles (Crafted / Essentials)", 1)
+        pdf.cell(40, 6, f"${due_today_data['bundle_cost']:,.2f}", 1, 1, 'R')
+        
+    # Total Today
+    pdf.set_font("helvetica", "B", 10)
+    pdf.cell(140, 8, "Total Due Today", 1)
+    pdf.cell(40, 8, f"${due_today_data['total']:,.2f}", 1, 1, 'R')
     pdf.ln(5)
 
-    # MONTHLY CHARGES
+    # 2. MONTHLY CHARGES
     pdf.set_font("helvetica", "B", 12)
     pdf.cell(0, 8, "Due Monthly", ln=True)
-    
-    # Header
     pdf.set_font("helvetica", "B", 9)
     pdf.cell(10, 8, "#", 1, 0, 'C')
     pdf.cell(50, 8, "Plan", 1, 0, 'L')
-    pdf.cell(90, 8, "Features / Protection", 1, 0, 'L')
-    pdf.cell(30, 8, "Line Total", 1, 1, 'R')
+    pdf.cell(80, 8, "Features / Protection", 1, 0, 'L')
+    pdf.cell(40, 8, "Line Total", 1, 1, 'R')
     
-    # Lines
     pdf.set_font("helvetica", "", 8)
-    l_info, total_monthly = get_totals()
+    l_info, _ = get_totals()
     for idx, l in enumerate(st.session_state.lines):
         pdf.cell(10, 8, str(idx+1), 1, 0, 'C')
         pdf.cell(50, 8, l['plan'], 1, 0, 'L')
-        
-        # Build feature string
         feats = l.get('features', []) + l.get('sp_features', [])
         if l.get('protection') != "None": feats.append(l['protection'])
         if l.get('vbis') != "None": feats.append(l['vbis'])
         feat_str = ", ".join(feats) if feats else "-"
-        
-        # Truncate feature string if too long
-        if len(feat_str) > 60: feat_str = feat_str[:57] + "..."
-        
-        pdf.cell(90, 8, feat_str, 1, 0, 'L')
-        pdf.cell(30, 8, f"${l_info[idx]['total']:.2f}", 1, 1, 'R')
-
+        if len(feat_str) > 50: feat_str = feat_str[:47] + "..."
+        pdf.cell(80, 8, feat_str, 1, 0, 'L')
+        pdf.cell(40, 8, f"${l_info[idx]['total']:.2f}", 1, 1, 'R')
+    
     # Account Level
     if st.session_state.tmp_multi != "None":
         m_price = next((item['price'] for item in MULTI_PROT_DATA if item['name'] == st.session_state.tmp_multi), 0)
-        pdf.cell(150, 8, f"Account: {st.session_state.tmp_multi}", 1, 0, 'L')
-        pdf.cell(30, 8, f"${m_price:.2f}", 1, 1, 'R')
-    
+        pdf.cell(140, 8, f"Account: {st.session_state.tmp_multi}", 1, 0, 'L')
+        pdf.cell(40, 8, f"${m_price:.2f}", 1, 1, 'R')
     if st.session_state.whole_office:
-        pdf.cell(150, 8, "Account: Whole Office Protect", 1, 0, 'L')
-        pdf.cell(30, 8, "$55.00", 1, 1, 'R')
-        
-    pdf.cell(150, 8, f"Economic Adjustment Charge (x{len(st.session_state.lines)})", 1, 0, 'L')
-    pdf.cell(30, 8, f"${len(st.session_state.lines)*2.98:.2f}", 1, 1, 'R')
-
-    # Grand Total
-    pdf.set_font("helvetica", "B", 12)
-    pdf.cell(150, 10, "Total Monthly Recurring", 0, 0, 'R')
-    pdf.cell(30, 10, f"${total_monthly:,.2f}", 0, 1, 'R')
+        pdf.cell(140, 8, "Account: Whole Office Protect", 1, 0, 'L')
+        pdf.cell(40, 8, "$55.00", 1, 1, 'R')
     
+    pdf.cell(140, 8, f"Economic Adjustment Charge (x{len(st.session_state.lines)})", 1, 0, 'L')
+    pdf.cell(40, 8, f"${len(st.session_state.lines)*2.98:.2f}", 1, 1, 'R')
+
+    pdf.set_font("helvetica", "B", 10)
+    pdf.cell(140, 8, "Total Monthly Recurring", 1, 0, 'R')
+    pdf.cell(40, 8, f"${monthly_total:,.2f}", 1, 1, 'R')
+    pdf.ln(5)
+
+    # 3. FIRST BILL / ONE TIME
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(0, 8, "First Month / One Time Charges", ln=True)
+    pdf.set_font("helvetica", "", 10)
+    
+    if first_bill_data['act_fees'] > 0:
+        pdf.cell(140, 6, "Activation / Upgrade Fees ($40.00/ea)", 1)
+        pdf.cell(40, 6, f"${first_bill_data['act_fees']:,.2f}", 1, 1, 'R')
+    
+    if first_bill_data['credits'] > 0:
+        pdf.cell(140, 6, "Bill Credits (Est. 1-2 Cycles)", 1)
+        pdf.cell(40, 6, f"-${first_bill_data['credits']:,.2f}", 1, 1, 'R')
+
     return pdf.output()
 
 # --- SIDEBAR ---
@@ -194,7 +213,7 @@ if st.session_state.step > 1:
         for i, item in enumerate(l_info):
             st.write(f"Line {i+1}: **${item['total']:.2f}** ({item['tier']})")
         st.divider()
-        st.subheader(f"Total: ${a_total:,.2f}")
+        st.subheader(f"Monthly: ${a_total:,.2f}")
 
 # --- STEPS ---
 if st.session_state.step == 1:
@@ -273,29 +292,65 @@ elif st.session_state.step == 4:
     if st.button("Review & Export"): st.session_state.step = 5; st.rerun()
 
 elif st.session_state.step == 5:
-    st.header("Step 5: Finalize Quote")
+    st.header("Step 5: Finalize & Calculate OTD")
     
-    # 1. Sale Information
+    # 1. Sale Info
     with st.container(border=True):
-        st.subheader("Sale Details")
-        biz_name = st.text_input("Business Name", "Stronghold Engineering Inc")
-        rep_name = st.text_input("Representative Name", "Noah Braun")
-        
-    # 2. One-Time Charges (Due Today)
-    with st.container(border=True):
-        st.subheader("Due Today Charges")
-        c1, c2 = st.columns(2)
-        taxes = c1.number_input("Estimated Taxes ($)", 0.0)
-        setup = c2.number_input("One-Time Setup/Install Fees ($)", 0.0)
-        st.caption(f"Total Due Today: ${taxes+setup:,.2f}")
+        st.subheader("Sale Information")
+        c1, c2, c3 = st.columns(3)
+        biz_name = c1.text_input("Business Name", "Business Name")
+        rep_name = c2.text_input("Sales Rep Name", "Sales Rep Name")
+        tax_rate = c3.number_input("Sales Tax Rate (%)", value=6.75)
 
-    # 3. Monthly Summary
-    l_info, total = get_totals()
-    st.subheader(f"Total Due Monthly: ${total:,.2f}")
+    # 2. Out The Door (Due Today) Calculator
+    with st.container(border=True):
+        st.subheader("Due Today (OTD) Calculator")
+        
+        # Device Tax Input
+        device_retail_total = st.number_input("Total Retail Price of Devices (to calculate tax)", min_value=0.0)
+        
+        c1, c2 = st.columns(2)
+        su_smart = c1.number_input("Set Up & Go (Smartphone) ($39.99)", min_value=0, step=1)
+        su_std = c2.number_input("Set Up (Standard) ($29.99)", min_value=0, step=1)
+        
+        c3, c4 = st.columns(2)
+        bund_craft = c3.number_input("Crafted Bundle ($150)", min_value=0, step=1)
+        bund_ess = c4.number_input("Custom Essentials Bundle ($215)", min_value=0, step=1)
+        
+        # OTD MATH
+        setup_cost = (su_smart * 39.99) + (su_std * 29.99)
+        bundle_cost = (bund_craft * 150.0) + (bund_ess * 215.0)
+        
+        # Tax Calculation: (Device Retail + Setup + Bundles) * Tax Rate
+        taxable_base = device_retail_total + setup_cost + bundle_cost
+        est_tax = taxable_base * (tax_rate / 100)
+        
+        # Due Today = Tax + Setup Cost + Bundle Cost (Devices assumed financed)
+        total_due_today = est_tax + setup_cost + bundle_cost
+        
+        st.markdown(f"**Total Taxable Amount:** ${taxable_base:,.2f}")
+        st.markdown(f"**Estimated Tax:** ${est_tax:,.2f}")
+        st.success(f"**TOTAL DUE TODAY: ${total_due_today:,.2f}**")
+        
+        due_today_data = {
+            "tax_rate": tax_rate, "tax_amt": est_tax, 
+            "setup_cost": setup_cost, "bundle_cost": bundle_cost, 
+            "total": total_due_today
+        }
+
+    # 3. First Month & Credits
+    with st.container(border=True):
+        st.subheader("First Month / One Time Charges")
+        c1, c2 = st.columns(2)
+        act_count = c1.number_input("Activation/Upgrade Fees ($40)", min_value=0, step=1)
+        credits = c2.number_input("One Time Bill Credits ($)", min_value=0.0)
+        
+        first_bill_data = {"act_fees": act_count * 40.0, "credits": credits}
 
     # 4. Generate PDF
+    _, monthly_total = get_totals()
     if st.button("Generate PDF Quote"):
-        pdf_bytes = generate_pdf(biz_name, rep_name, taxes+setup)
+        pdf_bytes = generate_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_data)
         st.download_button("📥 Download PDF", data=bytes(pdf_bytes), file_name="quote.pdf", mime="application/pdf")
     
     if st.button("Start New Quote"): 
