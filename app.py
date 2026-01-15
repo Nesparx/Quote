@@ -5,12 +5,12 @@ import datetime
 # --- INITIALIZATION ---
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'lines' not in st.session_state: st.session_state.lines = []
+# Initialize account keys
 for key in ['autopay', 'military', 'joint_offer', 'tmp_multi', 'whole_office']:
     if key not in st.session_state:
         st.session_state[key] = False if key != 'tmp_multi' else "None"
 
 # --- PROMO CATALOG (Value + Fixed Term) ---
-# Terms: use integer for months (36, 24) or string "One-Time"
 PROMO_CATALOG = {
     "Pro": [
         {"name": "$1000 Off iPhone 16 Pro", "value": 1000.0, "term": 36},
@@ -79,7 +79,7 @@ MULTI_PROT_DATA = [
 
 st.set_page_config(page_title="Verizon Quote Wizard", layout="wide")
 
-# --- CALCULATION LOGIC ---
+# --- CALCULATION ENGINE ---
 def get_totals():
     lines = st.session_state.lines
     sm_count = sum(1 for l in lines if l.get('plan') in SMARTPHONE_TIERS)
@@ -130,19 +130,16 @@ def get_totals():
         # PROMO ENGINE
         promo_credit = 0
         p_sel = l.get('promo_selection', 'None')
+        val = 0.0
+        term = 36
         
         if p_sel != "None":
-            val = 0.0
-            term = 36 # Default
-            
             if p_sel == "Custom":
                 val = l.get('custom_promo_val', 0.0)
-                # Parse Custom Term
                 cust_term = l.get('custom_promo_term', '36 Months')
                 if cust_term == "One-Time": term = "One-Time"
                 else: term = int(cust_term.split()[0])
             else:
-                # Lookup Fixed Term from Catalog
                 eligible = PROMO_CATALOG.get(tier, []) + PROMO_CATALOG.get("Base", [])
                 for p in eligible:
                     if p['name'] == p_sel:
@@ -150,7 +147,6 @@ def get_totals():
                         term = p['term']
                         break
             
-            # Apply Math
             if term == "One-Time":
                 one_time_promo_total += val
             else:
@@ -167,96 +163,143 @@ def get_totals():
     account_mrc += (len(lines) * 2.98)
     return line_details, account_mrc, one_time_promo_total
 
-# --- PDF GENERATOR ---
-def generate_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_data, one_time_promos):
-    pdf = FPDF()
+# --- PROFESSIONAL PDF CLASS ---
+class ProfessionalQuote(FPDF):
+    def header(self):
+        # Fallback Text Logo
+        self.set_font('Helvetica', 'B', 20)
+        self.set_text_color(0, 0, 0)
+        self.cell(0, 10, 'verizon business', ln=True)
+        
+        # Red Accent Line (Verizon Red)
+        self.set_draw_color(205, 4, 11)
+        self.set_line_width(0.5)
+        self.line(10, 25, 200, 25)
+        self.ln(20)
+
+    def footer(self):
+        self.set_y(-25)
+        self.set_font('Helvetica', 'I', 8)
+        self.set_text_color(128, 128, 128)
+        self.multi_cell(0, 4, "This quote is valid for 30 days. All pricing is subject to credit approval and agreement terms. Activation fees, taxes, and government surcharges are estimates and may vary by location. Monthly access fees are billed in advance. Early termination fees may apply.")
+        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+
+def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_data, ot_promos):
+    pdf = ProfessionalQuote()
     pdf.add_page()
-    pdf.set_font("helvetica", "B", 16)
-    pdf.cell(0, 10, "verizon business", ln=True)
-    pdf.set_font("helvetica", "", 10)
-    pdf.cell(0, 5, f"Prepared for: {biz_name}", ln=True)
-    pdf.cell(0, 5, f"Prepared by: {rep_name}", ln=True)
-    pdf.cell(0, 5, f"Date: {datetime.date.today()}", ln=True)
-    pdf.ln(10)
+    
+    # --- HEADER INFO GRID ---
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(0, 0, 0)
+    
+    pdf.set_xy(10, 30)
+    pdf.cell(90, 5, "PREPARED FOR:", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(90, 5, biz_name, ln=True)
+    pdf.cell(90, 5, f"Date: {datetime.date.today().strftime('%B %d, %Y')}", ln=True)
+    
+    pdf.set_xy(110, 30)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(90, 5, "PREPARED BY:", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_xy(110, 35)
+    pdf.cell(90, 5, rep_name, ln=True)
+    pdf.set_xy(110, 40)
+    pdf.cell(90, 5, "Verizon Business", ln=True)
+    
+    pdf.ln(15)
 
-    # 1. DUE TODAY
-    pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 8, "Due Today (Estimated Out The Door)", ln=True)
-    pdf.set_font("helvetica", "", 10)
+    # --- SECTION 1: DUE TODAY (OTD) ---
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 8, "ESTIMATED DUE TODAY", 0, 1, 'L', fill=True)
     
-    pdf.cell(140, 6, f"Estimated Sales Tax ({due_today_data['tax_rate']}%)", 1)
-    pdf.cell(40, 6, f"${due_today_data['tax_amt']:,.2f}", 1, 1, 'R')
-    
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(150, 7, f"Estimated Sales Tax ({due_today_data['tax_rate']}%) on Devices & Accessories", 1)
+    pdf.cell(40, 7, f"${due_today_data['tax_amt']:,.2f}", 1, 1, 'R')
     if due_today_data['setup_cost'] > 0:
-        pdf.cell(140, 6, "Setup & Service Charges", 1)
-        pdf.cell(40, 6, f"${due_today_data['setup_cost']:,.2f}", 1, 1, 'R')
+        pdf.cell(150, 7, "Setup, Go & Service Charges", 1)
+        pdf.cell(40, 7, f"${due_today_data['setup_cost']:,.2f}", 1, 1, 'R')
     if due_today_data['bundle_cost'] > 0:
-        pdf.cell(140, 6, "Bundles (Crafted / Essentials)", 1)
-        pdf.cell(40, 6, f"${due_today_data['bundle_cost']:,.2f}", 1, 1, 'R')
-        
-    pdf.set_font("helvetica", "B", 10)
-    pdf.cell(140, 8, "Total Due Today", 1)
-    pdf.cell(40, 8, f"${due_today_data['total']:,.2f}", 1, 1, 'R')
-    pdf.ln(5)
-
-    # 2. MONTHLY CHARGES
-    pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 8, "Due Monthly", ln=True)
-    pdf.set_font("helvetica", "B", 9)
-    pdf.cell(10, 8, "#", 1, 0, 'C')
-    pdf.cell(40, 8, "Plan", 1, 0, 'L')
-    pdf.cell(50, 8, "Promo / Credits", 1, 0, 'L')
-    pdf.cell(60, 8, "Features / Protection", 1, 0, 'L')
-    pdf.cell(30, 8, "Line Total", 1, 1, 'R')
+        pdf.cell(150, 7, "Accessory Bundles (Crafted / Essentials)", 1)
+        pdf.cell(40, 7, f"${due_today_data['bundle_cost']:,.2f}", 1, 1, 'R')
     
-    pdf.set_font("helvetica", "", 8)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(150, 8, "TOTAL DUE TODAY", 1)
+    pdf.cell(40, 8, f"${due_today_data['total']:,.2f}", 1, 1, 'R')
+    pdf.ln(8)
+
+    # --- SECTION 2: MONTHLY RECURRING ---
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 8, "MONTHLY RECURRING CHARGES", 0, 1, 'L', fill=True)
+    
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_fill_color(220, 220, 220)
+    pdf.cell(10, 6, "#", 1, 0, 'C', fill=True)
+    pdf.cell(40, 6, "Plan", 1, 0, 'L', fill=True)
+    pdf.cell(50, 6, "Promotions / Credits", 1, 0, 'L', fill=True)
+    pdf.cell(60, 6, "Features & Protection", 1, 0, 'L', fill=True)
+    pdf.cell(30, 6, "Total", 1, 1, 'R', fill=True)
+    
+    pdf.set_font("Helvetica", "", 8)
     l_info, _, _ = get_totals()
+    
     for idx, l in enumerate(st.session_state.lines):
-        pdf.cell(10, 8, str(idx+1), 1, 0, 'C')
-        pdf.cell(40, 8, l['plan'], 1, 0, 'L')
+        plan_name = l['plan']
         
-        # Promo String Logic
-        p_text = "-"
         if l_info[idx]['promo_val'] > 0:
             term = l_info[idx]['promo_term']
             val = l_info[idx]['promo_val']
-            if term == "One-Time":
-                p_text = f"One-Time Credit: ${val:.0f}"
-            else:
-                p_text = f"Promo Credit: -${l_info[idx]['promo_credit']:.2f}/mo ({term}mo)"
+            if term == "One-Time": p_txt = "One-Time Credit Applied"
+            else: p_txt = f"Credit: -${l_info[idx]['promo_credit']:.2f} ({term}mo)"
+        else: p_txt = "-"
         
-        pdf.cell(50, 8, p_text[:28], 1, 0, 'L')
-        
-        # Features
         feats = l.get('features', []) + l.get('sp_features', [])
-        if l.get('protection') != "None": feats.append(l['protection'])
-        feat_str = ", ".join(feats) if feats else "-"
-        pdf.cell(60, 8, feat_str[:35], 1, 0, 'L')
-        
-        pdf.cell(30, 8, f"${l_info[idx]['total']:.2f}", 1, 1, 'R')
+        if l.get('protection') != "None": feats.append("Prot")
+        if l.get('vbis') != "None": feats.append("VBIS")
+        f_txt = ", ".join(feats) if feats else "-"
+        if len(f_txt) > 45: f_txt = f_txt[:42] + "..."
 
-    # Account Level
-    pdf.cell(160, 8, f"Economic Adjustment Charge (x{len(st.session_state.lines)})", 1, 0, 'L')
-    pdf.cell(30, 8, f"${len(st.session_state.lines)*2.98:.2f}", 1, 1, 'R')
+        pdf.cell(10, 6, str(idx+1), 1, 0, 'C')
+        pdf.cell(40, 6, plan_name[:22], 1, 0, 'L')
+        pdf.cell(50, 6, p_txt, 1, 0, 'L')
+        pdf.cell(60, 6, f_txt, 1, 0, 'L')
+        pdf.cell(30, 6, f"${l_info[idx]['total']:.2f}", 1, 1, 'R')
 
-    pdf.set_font("helvetica", "B", 10)
-    pdf.cell(160, 8, "Total Monthly Recurring", 1, 0, 'R')
+    if st.session_state.tmp_multi != "None":
+        m_price = next((item['price'] for item in MULTI_PROT_DATA if item['name'] == st.session_state.tmp_multi), 0)
+        pdf.cell(160, 6, f"Account: {st.session_state.tmp_multi}", 1, 0, 'L')
+        pdf.cell(30, 6, f"${m_price:.2f}", 1, 1, 'R')
+    if st.session_state.whole_office:
+        pdf.cell(160, 6, "Account: Whole Office Protect", 1, 0, 'L')
+        pdf.cell(30, 6, "$55.00", 1, 1, 'R')
+    
+    econ = len(st.session_state.lines) * 2.98
+    pdf.cell(160, 6, "Economic Adjustment Charge", 1, 0, 'L')
+    pdf.cell(30, 6, f"${econ:.2f}", 1, 1, 'R')
+
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(160, 8, "TOTAL MONTHLY", 1, 0, 'R')
     pdf.cell(30, 8, f"${monthly_total:,.2f}", 1, 1, 'R')
-    pdf.ln(5)
+    pdf.ln(8)
 
-    # 3. FIRST BILL / CREDITS
-    pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 8, "First Month / One Time Charges", ln=True)
-    pdf.set_font("helvetica", "", 10)
+    # --- SECTION 3: FIRST BILL ---
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(0, 8, "FIRST BILL ESTIMATES & CREDITS", 0, 1, 'L', fill=True)
+    pdf.set_font("Helvetica", "", 9)
     
     if first_bill_data['act_fees'] > 0:
-        pdf.cell(140, 6, "Activation / Upgrade Fees", 1)
-        pdf.cell(40, 6, f"${first_bill_data['act_fees']:,.2f}", 1, 1, 'R')
+        pdf.cell(150, 7, "Activation / Upgrade Fees ($40/line)", 1)
+        pdf.cell(40, 7, f"${first_bill_data['act_fees']:,.2f}", 1, 1, 'R')
     
-    total_credits = first_bill_data['credits'] + one_time_promos
-    if total_credits > 0:
-        pdf.cell(140, 6, "Bill Credits / One-Time Promos", 1)
-        pdf.cell(40, 6, f"-${total_credits:,.2f}", 1, 1, 'R')
+    total_creds = first_bill_data['credits'] + ot_promos
+    if total_creds > 0:
+        pdf.cell(150, 7, "One-Time Bill Credits / Switcher Promos", 1)
+        pdf.cell(40, 7, f"-${total_creds:,.2f}", 1, 1, 'R')
+    
+    if first_bill_data['act_fees'] == 0 and total_creds == 0:
+        pdf.cell(0, 7, "No additional one-time charges or credits anticipated on first bill.", 1, 1, 'C')
 
     return pdf.output()
 
@@ -278,7 +321,7 @@ if st.session_state.step == 1:
     num = st.number_input("Total devices/lines?", min_value=1, value=1)
     if st.button("Start Quote"):
         st.session_state.num_lines = num
-        st.session_state.lines = [{"type": "Smartphone", "plan": "My Biz", "features": [], "sp_features": [], "protection": "None", "vbis": "None", "dev_pay": 0.0, "intro_disc": False, "promo_selection": "None", "custom_promo_term": "36 Months"} for _ in range(num)]
+        st.session_state.lines = [{"type": "Smartphone", "plan": "My Biz", "features": [], "sp_features": [], "protection": "None", "vbis": "None", "dev_pay": 0.0, "intro_disc": False, "promo_selection": "None", "promo_term": "36 Months"} for _ in range(num)]
         st.session_state.step = 2; st.rerun()
 
 elif st.session_state.step == 2:
@@ -412,7 +455,7 @@ elif st.session_state.step == 5:
 
     _, m_total, ot_promos = get_totals()
     if st.button("Generate PDF Quote"):
-        pdf_bytes = generate_pdf(biz_name, rep_name, due_today_data, m_total, first_bill_data, ot_promos)
+        pdf_bytes = create_pro_pdf(biz_name, rep_name, due_today_data, m_total, first_bill_data, ot_promos)
         st.download_button("📥 Download PDF", data=bytes(pdf_bytes), file_name="quote.pdf", mime="application/pdf")
     
     if st.button("Start New Quote"): 
