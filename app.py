@@ -9,12 +9,24 @@ for key in ['autopay', 'military', 'joint_offer', 'tmp_multi', 'whole_office']:
     if key not in st.session_state:
         st.session_state[key] = False if key != 'tmp_multi' else "None"
 
-# --- PROMO CATALOG (EDIT HERE TO UPDATE PROMOS) ---
+# --- PROMO CATALOG (Value + Fixed Term) ---
+# Terms: use integer for months (36, 24) or string "One-Time"
 PROMO_CATALOG = {
-    "Pro": ["None", "$1000 Off iPhone 16 Pro (New)", "$800 Off Galaxy S24 (New)", "Custom"],
-    "Plus": ["None", "$830 Off iPhone 16 (New)", "$400 Off Pixel 9", "Custom"],
-    "Start": ["None", "$200 Off Select Androids", "Custom"],
-    "Base": ["None", "Custom"]
+    "Pro": [
+        {"name": "$1000 Off iPhone 16 Pro", "value": 1000.0, "term": 36},
+        {"name": "$800 Off Galaxy S24", "value": 800.0, "term": 36},
+        {"name": "$400 Off Pixel 9 Pro", "value": 400.0, "term": 36}
+    ],
+    "Plus": [
+        {"name": "$830 Off iPhone 16", "value": 830.0, "term": 36},
+        {"name": "$400 Off Pixel 9", "value": 400.0, "term": 36}
+    ],
+    "Start": [
+        {"name": "$200 Off Select Androids", "value": 200.0, "term": 36}
+    ],
+    "Base": [
+        {"name": "Switching Switcher (BIC)", "value": 200.0, "term": "One-Time"}
+    ]
 }
 
 # --- DATA CATALOGS ---
@@ -75,6 +87,7 @@ def get_totals():
     
     line_details = []
     account_mrc = 0
+    one_time_promo_total = 0
     
     for l in lines:
         plan = l.get('plan', 'My Biz')
@@ -114,8 +127,37 @@ def get_totals():
         if l.get('intro_disc'): disc += (base * 0.15)
         if st.session_state.military and dtype == "Smartphone": disc += 5.0
         
-        total = (base + l.get('dev_pay', 0.0) + extras + p_price) - disc
-        line_details.append({"total": total, "tier": tier})
+        # PROMO ENGINE
+        promo_credit = 0
+        p_sel = l.get('promo_selection', 'None')
+        
+        if p_sel != "None":
+            val = 0.0
+            term = 36 # Default
+            
+            if p_sel == "Custom":
+                val = l.get('custom_promo_val', 0.0)
+                # Parse Custom Term
+                cust_term = l.get('custom_promo_term', '36 Months')
+                if cust_term == "One-Time": term = "One-Time"
+                else: term = int(cust_term.split()[0])
+            else:
+                # Lookup Fixed Term from Catalog
+                eligible = PROMO_CATALOG.get(tier, []) + PROMO_CATALOG.get("Base", [])
+                for p in eligible:
+                    if p['name'] == p_sel:
+                        val = p['value']
+                        term = p['term']
+                        break
+            
+            # Apply Math
+            if term == "One-Time":
+                one_time_promo_total += val
+            else:
+                promo_credit = val / term
+
+        total = (base + l.get('dev_pay', 0.0) + extras + p_price) - (disc + promo_credit)
+        line_details.append({"total": total, "tier": tier, "promo_credit": promo_credit, "promo_val": val if p_sel != "None" else 0, "promo_term": term if p_sel != "None" else 0})
         account_mrc += total
 
     if st.session_state.tmp_multi != "None":
@@ -123,10 +165,10 @@ def get_totals():
         account_mrc += m_price
     if st.session_state.whole_office: account_mrc += 55.0
     account_mrc += (len(lines) * 2.98)
-    return line_details, account_mrc
+    return line_details, account_mrc, one_time_promo_total
 
 # --- PDF GENERATOR ---
-def generate_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_data):
+def generate_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_data, one_time_promos):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("helvetica", "B", 16)
@@ -168,15 +210,22 @@ def generate_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_d
     pdf.cell(30, 8, "Line Total", 1, 1, 'R')
     
     pdf.set_font("helvetica", "", 8)
-    l_info, _ = get_totals()
+    l_info, _, _ = get_totals()
     for idx, l in enumerate(st.session_state.lines):
         pdf.cell(10, 8, str(idx+1), 1, 0, 'C')
         pdf.cell(40, 8, l['plan'], 1, 0, 'L')
         
-        # Promo String
-        promo = l.get('promo_selection', 'None')
-        if promo == "Custom": promo = l.get('custom_promo_text', 'Custom Credit')
-        pdf.cell(50, 8, promo[:25], 1, 0, 'L')
+        # Promo String Logic
+        p_text = "-"
+        if l_info[idx]['promo_val'] > 0:
+            term = l_info[idx]['promo_term']
+            val = l_info[idx]['promo_val']
+            if term == "One-Time":
+                p_text = f"One-Time Credit: ${val:.0f}"
+            else:
+                p_text = f"Promo Credit: -${l_info[idx]['promo_credit']:.2f}/mo ({term}mo)"
+        
+        pdf.cell(50, 8, p_text[:28], 1, 0, 'L')
         
         # Features
         feats = l.get('features', []) + l.get('sp_features', [])
@@ -186,7 +235,7 @@ def generate_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_d
         
         pdf.cell(30, 8, f"${l_info[idx]['total']:.2f}", 1, 1, 'R')
 
-    # Account Level Summary
+    # Account Level
     pdf.cell(160, 8, f"Economic Adjustment Charge (x{len(st.session_state.lines)})", 1, 0, 'L')
     pdf.cell(30, 8, f"${len(st.session_state.lines)*2.98:.2f}", 1, 1, 'R')
 
@@ -195,16 +244,19 @@ def generate_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_d
     pdf.cell(30, 8, f"${monthly_total:,.2f}", 1, 1, 'R')
     pdf.ln(5)
 
-    # 3. FIRST BILL
+    # 3. FIRST BILL / CREDITS
     pdf.set_font("helvetica", "B", 12)
     pdf.cell(0, 8, "First Month / One Time Charges", ln=True)
     pdf.set_font("helvetica", "", 10)
+    
     if first_bill_data['act_fees'] > 0:
         pdf.cell(140, 6, "Activation / Upgrade Fees", 1)
         pdf.cell(40, 6, f"${first_bill_data['act_fees']:,.2f}", 1, 1, 'R')
-    if first_bill_data['credits'] > 0:
-        pdf.cell(140, 6, "Bill Credits (Est. 1-2 Cycles)", 1)
-        pdf.cell(40, 6, f"-${first_bill_data['credits']:,.2f}", 1, 1, 'R')
+    
+    total_credits = first_bill_data['credits'] + one_time_promos
+    if total_credits > 0:
+        pdf.cell(140, 6, "Bill Credits / One-Time Promos", 1)
+        pdf.cell(40, 6, f"-${total_credits:,.2f}", 1, 1, 'R')
 
     return pdf.output()
 
@@ -212,11 +264,13 @@ def generate_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_d
 if st.session_state.step > 1:
     with st.sidebar:
         st.header("💰 Live Summary")
-        l_info, a_total = get_totals()
+        l_info, a_total, ot_promos = get_totals()
         for i, item in enumerate(l_info):
             st.write(f"Line {i+1}: **${item['total']:.2f}** ({item['tier']})")
         st.divider()
         st.subheader(f"Monthly: ${a_total:,.2f}")
+        if ot_promos > 0:
+            st.caption(f"One-Time Credits: -${ot_promos:,.2f}")
 
 # --- STEPS ---
 if st.session_state.step == 1:
@@ -224,14 +278,14 @@ if st.session_state.step == 1:
     num = st.number_input("Total devices/lines?", min_value=1, value=1)
     if st.button("Start Quote"):
         st.session_state.num_lines = num
-        st.session_state.lines = [{"type": "Smartphone", "plan": "My Biz", "features": [], "sp_features": [], "protection": "None", "vbis": "None", "dev_pay": 0.0, "intro_disc": False, "promo_selection": "None"} for _ in range(num)]
+        st.session_state.lines = [{"type": "Smartphone", "plan": "My Biz", "features": [], "sp_features": [], "protection": "None", "vbis": "None", "dev_pay": 0.0, "intro_disc": False, "promo_selection": "None", "custom_promo_term": "36 Months"} for _ in range(num)]
         st.session_state.step = 2; st.rerun()
 
 elif st.session_state.step == 2:
     st.header("Step 2: Assign Plans")
     for i in range(st.session_state.num_lines):
         with st.expander(f"Line {i+1} Setup", expanded=True):
-            st.session_state.lines[i]['type'] = st.selectbox("Category", ["Smartphone", "Internet", "Tablet", "Watch", "Other"], key=f"t_sel_{i}")
+            st.session_state.lines[i]['type'] = st.selectbox("Device Category", ["Smartphone", "Internet", "Tablet", "Watch", "Other"], key=f"t_sel_{i}")
             dtype = st.session_state.lines[i]['type']
             if dtype == "Smartphone": opts = list(SMARTPHONE_TIERS.keys()) + list(SMARTPHONE_STATIC.keys())
             elif dtype == "Internet": opts = list(INTERNET.keys())
@@ -243,13 +297,13 @@ elif st.session_state.step == 2:
 
 elif st.session_state.step == 3:
     st.header("Step 3: Account Options")
-    st.session_state.autopay = st.toggle("Autopay", value=st.session_state.autopay)
-    st.session_state.military = st.toggle("Military", value=st.session_state.military)
+    st.session_state.autopay = st.toggle("Autopay & Paper-Free Discount ($5 off eligible smartphone lines)", value=st.session_state.autopay)
+    st.session_state.military = st.toggle("Military / Veteran Discount ($5 off all smartphone lines)", value=st.session_state.military)
     
     has_sm = any(l['type'] == "Smartphone" for l in st.session_state.lines)
     has_int = any(l['type'] == "Internet" and l['plan'] in STANDARD_INTERNET for l in st.session_state.lines)
     if has_sm and has_int:
-        st.session_state.joint_offer = st.toggle("Joint Offer ($30 off Internet)", value=st.session_state.joint_offer)
+        st.session_state.joint_offer = st.toggle("Business Unlimited Joint Offer ($30 off Internet)", value=st.session_state.joint_offer)
     else: st.session_state.joint_offer = False
 
     eligible_count = sum(1 for l in st.session_state.lines if l['type'] in ["Smartphone", "Tablet", "Watch"] or "Jetpack" in str(l['plan']))
@@ -257,13 +311,13 @@ elif st.session_state.step == 3:
     for bracket in MULTI_PROT_DATA:
         if eligible_count >= bracket['min']: multi_opts.append(bracket['name'])
     
-    st.session_state.tmp_multi = st.selectbox("Multi-Device Protection", multi_opts, index=0)
-    st.session_state.whole_office = st.toggle("Whole Office Protect", value=st.session_state.whole_office)
+    st.session_state.tmp_multi = st.selectbox("Multi-Device Protection (3+ Eligible Lines)", multi_opts, index=0)
+    st.session_state.whole_office = st.toggle("Whole Office Protect ($55.00/mo)", value=st.session_state.whole_office)
     if st.button("Next"): st.session_state.step = 4; st.rerun()
 
 elif st.session_state.step == 4:
     st.header("Step 4: Features & Promos")
-    l_info, _ = get_totals()
+    l_info, _, _ = get_totals()
     for i in range(st.session_state.num_lines):
         l = st.session_state.lines[i]
         curr_tier = l_info[i]['tier']
@@ -292,15 +346,28 @@ elif st.session_state.step == 4:
                 if l['plan'] != "My Biz": avail_feats.append("VBMIS (Paid)")
                 l['sp_features'] = [f for f in avail_feats if st.checkbox(f"{f} (${SMARTPHONE_FEATURES[f]['price']})", key=f"sf_sel_{i}_{f}")]
             
-            # 3. PROMO SELECTION (NEW)
+            # 3. PROMO SELECTION
             st.markdown("---")
             st.caption(f"Available Promotions for {curr_tier} Tier")
-            # Determine eligible promos based on Tier
-            avail_promos = PROMO_CATALOG.get(curr_tier, ["None", "Custom"])
-            l['promo_selection'] = st.selectbox("Select Device Promo", avail_promos, key=f"promo_sel_{i}")
             
-            if l['promo_selection'] == "Custom":
-                l['custom_promo_text'] = st.text_input("Enter Custom Promo Details", key=f"cust_p_{i}")
+            # Get from Catalog
+            tier_promos = PROMO_CATALOG.get(curr_tier, []) + PROMO_CATALOG.get("Base", [])
+            promo_names = ["None"] + [p['name'] for p in tier_promos] + ["Custom"]
+            
+            l['promo_selection'] = st.selectbox("Select Promo", promo_names, key=f"promo_sel_{i}")
+            
+            # Smart Term Display
+            if l['promo_selection'] != "None":
+                if l['promo_selection'] == "Custom":
+                    c1, c2 = st.columns(2)
+                    l['custom_promo_val'] = c1.number_input("Custom Value ($)", min_value=0.0, step=10.0, key=f"cust_val_{i}")
+                    l['custom_promo_term'] = c2.selectbox("Term", ["36 Months", "24 Months", "12 Months", "One-Time"], key=f"cust_term_{i}")
+                else:
+                    # Find and display fixed term
+                    sel_p = next((p for p in tier_promos if p['name'] == l['promo_selection']), None)
+                    if sel_p:
+                        term_display = f"{sel_p['term']} Months" if isinstance(sel_p['term'], int) else sel_p['term']
+                        st.info(f"Applied over: **{term_display}**")
 
             st.markdown("---")
             l['dev_pay'] = st.number_input("Monthly Device Payment ($)", min_value=0.0, key=f"dp_sel_{i}")
@@ -343,9 +410,9 @@ elif st.session_state.step == 5:
         credits = c2.number_input("Bill Credits ($)", min_value=0.0)
         first_bill_data = {"act_fees": act_fees, "credits": credits}
 
-    _, m_total = get_totals()
+    _, m_total, ot_promos = get_totals()
     if st.button("Generate PDF Quote"):
-        pdf_bytes = generate_pdf(biz_name, rep_name, due_today_data, m_total, first_bill_data)
+        pdf_bytes = generate_pdf(biz_name, rep_name, due_today_data, m_total, first_bill_data, ot_promos)
         st.download_button("📥 Download PDF", data=bytes(pdf_bytes), file_name="quote.pdf", mime="application/pdf")
     
     if st.button("Start New Quote"): 
