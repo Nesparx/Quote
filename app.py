@@ -235,8 +235,12 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
         pdf.cell(150, 7, "Setup, Go & Service Charges", 1)
         pdf.cell(40, 7, f"${due_today_data['setup_cost']:,.2f}", 1, 1, 'R')
     if due_today_data['bundle_cost'] > 0:
-        pdf.cell(150, 7, "Accessory Bundles", 1)
+        pdf.cell(150, 7, "Accessory Bundles (Crafted / Essentials)", 1)
         pdf.cell(40, 7, f"${due_today_data['bundle_cost']:,.2f}", 1, 1, 'R')
+    if due_today_data.get('acc_cost', 0) > 0:
+        pdf.cell(150, 7, "Individual Accessories (Screen / Case / Charger)", 1)
+        pdf.cell(40, 7, f"${due_today_data['acc_cost']:,.2f}", 1, 1, 'R')
+    
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(150, 8, "TOTAL DUE TODAY", 1)
     pdf.cell(40, 8, f"${due_today_data['total']:,.2f}", 1, 1, 'R')
@@ -246,12 +250,11 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 8, "MONTHLY RECURRING CHARGES", 0, 1, 'L', fill=True)
     
-    # NEW HEADERS (WIDER BOXES)
-    # Col Widths: # (10), Plan (45), Device/Promo (45), Features/Prot (60), Total (30) = 190
+    # HEADERS
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_fill_color(220, 220, 220)
     pdf.cell(10, 8, "#", 1, 0, 'C', fill=True)
-    pdf.cell(45, 8, "Plan Details", 1, 0, 'L', fill=True)
+    pdf.cell(45, 8, "Plan Breakdown", 1, 0, 'L', fill=True)
     pdf.cell(45, 8, "Device & Promotions", 1, 0, 'L', fill=True)
     pdf.cell(60, 8, "Features, Add-ons & Protection", 1, 0, 'L', fill=True)
     pdf.cell(30, 8, "Line Total", 1, 1, 'R', fill=True)
@@ -262,7 +265,6 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
     for idx, l in enumerate(st.session_state.lines):
         data = l_info[idx]
         
-        # Build Text Blocks
         # 1. PLAN BLOCK
         plan_txt = f"{l['plan']}: ${data['base']:.2f}"
         if data['ap_disc'] > 0: plan_txt += f"\nAutopay: -${data['ap_disc']:.2f}"
@@ -285,49 +287,41 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
         if not feat_txt: feat_txt = "-"
 
         # CALCULATE HEIGHT
-        # We simulate the height of the tallest cell
         nb_plan = len(plan_txt.split('\n'))
         nb_dev = len(dev_txt.split('\n'))
         nb_feat = len(feat_txt.split('\n'))
         max_lines = max(nb_plan, nb_dev, nb_feat)
-        row_height = max_lines * 4 # 4mm per line
-        if row_height < 8: row_height = 8 # Min height
+        row_height = max_lines * 4 
+        if row_height < 8: row_height = 8
 
-        # PRINT ROW (Using XY positioning for columns)
+        # PRINT ROW
         x_start = pdf.get_x()
         y_start = pdf.get_y()
         
-        # Check page break
         if y_start + row_height > 250:
             pdf.add_page()
             y_start = pdf.get_y()
             x_start = pdf.get_x()
 
-        # Col 1
         pdf.rect(x_start, y_start, 10, row_height)
         pdf.multi_cell(10, row_height, str(idx+1), 0, 'C')
         
-        # Col 2
         pdf.set_xy(x_start + 10, y_start)
         pdf.rect(x_start + 10, y_start, 45, row_height)
         pdf.multi_cell(45, 4, plan_txt, 0, 'L')
         
-        # Col 3
         pdf.set_xy(x_start + 55, y_start)
         pdf.rect(x_start + 55, y_start, 45, row_height)
         pdf.multi_cell(45, 4, dev_txt, 0, 'L')
         
-        # Col 4
         pdf.set_xy(x_start + 100, y_start)
         pdf.rect(x_start + 100, y_start, 60, row_height)
         pdf.multi_cell(60, 4, feat_txt, 0, 'L')
         
-        # Col 5
         pdf.set_xy(x_start + 160, y_start)
         pdf.rect(x_start + 160, y_start, 30, row_height)
         pdf.multi_cell(30, row_height, f"${data['total']:.2f}", 0, 'R')
         
-        # Move cursor to next row
         pdf.set_xy(x_start, y_start + row_height)
 
     # Account Level
@@ -339,10 +333,8 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
     pdf.cell(160, 8, "Economic Adjustment Charge", 1, 0, 'L')
     pdf.cell(30, 8, f"${econ:.2f}", 1, 1, 'R')
 
-    # TAX RANGE LOGIC
     low_tax = base_total_for_tax * 0.18
     high_tax = base_total_for_tax * 0.42
-    
     pdf.cell(160, 8, "Estimated Taxes, Surcharges and Fees (18%-42% of Base Plan)", 1, 0, 'L')
     pdf.cell(30, 8, f"${low_tax:.2f} - ${high_tax:.2f}", 1, 1, 'R')
 
@@ -492,18 +484,30 @@ elif st.session_state.step == 5:
         c1, c2 = st.columns(2)
         su_smart = c1.number_input("Smartphone Setup ($39.99)", min_value=0, step=1)
         su_std = c2.number_input("Standard Setup ($29.99)", min_value=0, step=1)
+        
         c3, c4 = st.columns(2)
         bund_craft = c3.number_input("Crafted Bundle ($150)", min_value=0, step=1)
         bund_ess = c4.number_input("Custom Essentials ($215)", min_value=0, step=1)
         
+        c5, c6, c7 = st.columns(3)
+        acc_screen = c5.number_input("Screen Prot ($66.99)", min_value=0, step=1)
+        acc_case = c6.number_input("Case ($56.99)", min_value=0, step=1)
+        acc_chg = c7.number_input("Charger ($36.99)", min_value=0, step=1)
+        
         setup_cost = (su_smart * 39.99) + (su_std * 29.99)
         bundle_cost = (bund_craft * 150.0) + (bund_ess * 215.0)
-        taxable = dev_retail + setup_cost + bundle_cost
+        acc_cost = (acc_screen * 66.99) + (acc_case * 56.99) + (acc_chg * 36.99)
+        
+        taxable = dev_retail + setup_cost + bundle_cost + acc_cost
         tax_amt = taxable * (tax_rate / 100)
-        total_today = tax_amt + setup_cost + bundle_cost
+        total_today = tax_amt + setup_cost + bundle_cost + acc_cost
         
         st.success(f"**TOTAL DUE TODAY: ${total_today:,.2f}**")
-        due_today_data = {"tax_rate": tax_rate, "tax_amt": tax_amt, "setup_cost": setup_cost, "bundle_cost": bundle_cost, "total": total_today}
+        due_today_data = {
+            "tax_rate": tax_rate, "tax_amt": tax_amt, 
+            "setup_cost": setup_cost, "bundle_cost": bundle_cost, "acc_cost": acc_cost,
+            "total": total_today
+        }
 
     with st.container(border=True):
         st.subheader("First Bill / Credits")
