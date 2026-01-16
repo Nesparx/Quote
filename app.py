@@ -40,7 +40,7 @@ PROMO_CATALOG = {
         {"name": "$699.99 Off Pixel 9 Series No Trade", "value": 699.99, "term": 36, "type": "DPP", "req_port": False}
     ],
     "Base": [
-        {"name": "$120 BYOD BYOD+", "value": 120.0, "term": "24", "type": "BYOD", "req_port": False},
+        {"name": "$120 BYOD BYOD+", "value": 120.0, "term": 24, "type": "BYOD", "req_port": False},
         {"name": "Pay Off Your Phone", "value": 800.0, "term": "One-Time", "type": "DPP", "req_port": True},
         {"name": "$415 Off iPhone 17 Series w/ Trade", "value": 415.0, "term": 36, "type": "DPP", "req_port": False},
         {"name": "$730 Off iPhone 16 Series w/ Trade", "value": 730.0, "term": 36, "type": "DPP", "req_port": False},
