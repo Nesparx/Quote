@@ -12,22 +12,43 @@ for key in ['autopay', 'military', 'joint_offer', 'tmp_multi', 'whole_office']:
 # --- PROMO CATALOG ---
 PROMO_CATALOG = {
     "Pro": [
-        {"name": "$1000 Off iPhone 16 Pro", "value": 1000.0, "term": 36, "type": "DPP", "req_port": True},
-        {"name": "$800 Off Galaxy S24", "value": 800.0, "term": 36, "type": "DPP", "req_port": False},
-        {"name": "$400 Off Pixel 9 Pro", "value": 400.0, "term": 36, "type": "DPP", "req_port": 36},
-        {"name": "$540 BYOD Credit", "value": 540.0, "term": 36, "type": "BYOD", "req_port": True}
+        {"name": "$1000 Off iPhone 17 Series w/ Trade", "value": 1000.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$1000 Off Android Devices w/ Trade", "value": 1000.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$540 Port In DPA", "value": 540.0, "term": 24, "type": "DPP", "req_port": True},
+        {"name": "$720 BYOD Port In", "value": 720.0, "term": 24, "type": "BYOD", "req_port": True},
+        {"name": "$829.99 Off iPhone 17 Series No Trade", "value": 829.99, "term": 36, "type": "DPP", "req_port": False}
     ],
     "Plus": [
-        {"name": "$830 Off iPhone 16", "value": 830.0, "term": 36, "type": "DPP", "req_port": True},
-        {"name": "$400 Off Pixel 9", "value": 400.0, "term": 36, "type": "DPP", "req_port": False},
-        {"name": "$360 BYOD Credit", "value": 360.0, "term": 36, "type": "BYOD", "req_port": True}
+        {"name": "$830 Off iPhone 17 Series w/ Trade", "value": 830.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$800 Off S25/Pixel 10 Series w/ Trade", "value": 800.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$1100 Off Z Flip7/Fold7 and Pixel 10 Pro Fold w/ Trade", "value": 1100.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$540 BYOD Port In", "value": 540.0, "term": 24, "type": "BYOD", "req_port": True},
+        {"name": "$649.99 Off iPhone 17 Series No Trade", "value": 649.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$729.99 Off iPhone 16 Series No Trade", "value": 729.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$799.99 Off S25 Series No Trade", "value": 799.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$799.99 Off Pixel 10 Series No Trade", "value": 799.99, "term": 36, "type": "DPP", "req_port": False}
     ],
     "Start": [
-        {"name": "$200 Off Select Androids", "value": 200.0, "term": 36, "type": "DPP", "req_port": False},
-        {"name": "$180 BYOD Credit", "value": 180.0, "term": 36, "type": "BYOD", "req_port": True}
+        {"name": "$650 Off iPhone 17 Series w/ Trade", "value": 650.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$620 Off S25/Pixel 10 Series w/ Trade", "value": 620.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$289.99 Off iPhone 17 Series No Trade", "value": 289.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$469.99 Off iPhone 16 Series No Trade", "value": 469.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$629.99 Off iPhone 15 Series No Trade", "value": 629.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$439.99 Off S25 Series No Trade", "value": 439.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$699.99 Off S24 Series No Trade", "value": 699.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$439.99 Off Pixel 10 Series No Trade", "value": 439.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$699.99 Off Pixel 9 Series No Trade", "value": 699.99, "term": 36, "type": "DPP", "req_port": False}
     ],
     "Base": [
-        {"name": "Switching Switcher (BIC)", "value": 200.0, "term": "One-Time", "type": "Any", "req_port": True}
+        {"name": "$120 BYOD BYOD+", "value": 120.0, "term": "24", "type": "BYOD", "req_port": False},
+        {"name": "Pay Off Your Phone", "value": 800.0, "term": "One-Time", "type": "DPP", "req_port": True},
+        {"name": "$415 Off iPhone 17 Series w/ Trade", "value": 415.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$730 Off iPhone 16 Series w/ Trade", "value": 730.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$400 Off S25/Pixel 10 Series w/ Trade", "value": 400.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$700 Off S24 Series w/ Trade", "value": 700.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$649.99 Off S25 FE No Trade", "value": 649.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$599.99 Off iPhone 16e No Trade", "value": 599.99, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$499.99 Off Pixel 9a No Trade", "value": 499.99, "term": 36, "type": "DPP", "req_port": False}
     ]
 }
 
