@@ -9,22 +9,27 @@ for key in ['autopay', 'military', 'joint_offer', 'tmp_multi', 'whole_office']:
     if key not in st.session_state:
         st.session_state[key] = False if key != 'tmp_multi' else "None"
 
-# --- PROMO CATALOG ---
+# --- PROMO CATALOG (Now with Logic Flags) ---
+# type: "DPP" (Device Payment), "BYOD", or "Any"
+# req_port: True (Must toggle Port-In), False (Works for Upgrades/New Numbers too)
 PROMO_CATALOG = {
     "Pro": [
-        {"name": "$1000 Off iPhone 16 Pro", "value": 1000.0, "term": 36},
-        {"name": "$800 Off Galaxy S24", "value": 800.0, "term": 36},
-        {"name": "$400 Off Pixel 9 Pro", "value": 400.0, "term": 36}
+        {"name": "$1000 Off iPhone 16 Pro (Port-In)", "value": 1000.0, "term": 36, "type": "DPP", "req_port": True},
+        {"name": "$800 Off Galaxy S24 (Any)", "value": 800.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$540 BYOD Credit (Port-In)", "value": 540.0, "term": 36, "type": "BYOD", "req_port": True},
+        {"name": "$100 BYOD Upgrade", "value": 100.0, "term": 12, "type": "BYOD", "req_port": False}
     ],
     "Plus": [
-        {"name": "$830 Off iPhone 16", "value": 830.0, "term": 36},
-        {"name": "$400 Off Pixel 9", "value": 400.0, "term": 36}
+        {"name": "$830 Off iPhone 16 (Port-In)", "value": 830.0, "term": 36, "type": "DPP", "req_port": True},
+        {"name": "$400 Off Pixel 9 (Any)", "value": 400.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$360 BYOD Credit", "value": 360.0, "term": 36, "type": "BYOD", "req_port": True}
     ],
     "Start": [
-        {"name": "$200 Off Select Androids", "value": 200.0, "term": 36}
+        {"name": "$200 Off Select Androids", "value": 200.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$180 BYOD Credit", "value": 180.0, "term": 36, "type": "BYOD", "req_port": True}
     ],
     "Base": [
-        {"name": "Switching Switcher (BIC)", "value": 200.0, "term": "One-Time"}
+        {"name": "Switcher BIC (One-Time)", "value": 200.0, "term": "One-Time", "type": "Any", "req_port": True}
     ]
 }
 
@@ -153,12 +158,16 @@ def get_totals():
                 cust_term = l.get('custom_promo_term', '36 Months')
                 term = "One-Time" if cust_term == "One-Time" else int(cust_term.split()[0])
             else:
-                eligible = PROMO_CATALOG.get(tier, []) + PROMO_CATALOG.get("Base", [])
-                for p in eligible:
+                # Iterate through all tiers to find the promo since it might be a Base promo on a Pro line
+                all_promos = []
+                for t in PROMO_CATALOG: all_promos.extend(PROMO_CATALOG[t])
+                
+                for p in all_promos:
                     if p['name'] == p_sel:
                         val = p['value']
                         term = p['term']
                         break
+            
             if term == "One-Time": one_time_promo_total += val
             else: promo_credit = val / term
 
@@ -284,7 +293,6 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
         # 2. DEVICE/PROMO BLOCK
         dev_txt = f"Dev Pmt: ${data['dev_pay']:.2f}"
         if data['byod']: dev_txt += " (BYOD)"
-        
         if data['promo_val'] > 0 and data['promo_term'] != "One-Time":
             dev_txt += f"\nPromo: -${data['promo_credit']:.2f}"
             dev_txt += f"\n({data['promo_name'][:20]}..)"
@@ -308,7 +316,6 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
         # PRINT ROW
         x_start = pdf.get_x()
         y_start = pdf.get_y()
-        
         if y_start + row_height > 250:
             pdf.add_page()
             y_start = pdf.get_y()
@@ -469,8 +476,22 @@ elif st.session_state.step == 4:
             
             st.markdown("---")
             st.caption(f"Available Promotions for {curr_tier} Tier")
+            
+            # PROMO FILTERING LOGIC
             tier_promos = PROMO_CATALOG.get(curr_tier, []) + PROMO_CATALOG.get("Base", [])
-            promo_names = ["None"] + [p['name'] for p in tier_promos] + ["Custom"]
+            valid_promos = []
+            
+            for p in tier_promos:
+                # 1. Device Type Check
+                if l['byod'] and p.get('type') == 'DPP': continue
+                if not l['byod'] and p.get('type') == 'BYOD': continue
+                
+                # 2. Port Check
+                if p.get('req_port') and not l['port_in']: continue
+                
+                valid_promos.append(p['name'])
+            
+            promo_names = ["None"] + valid_promos + ["Custom"]
             l['promo_selection'] = st.selectbox("Select Promo", promo_names, key=f"promo_sel_{i}")
             
             if l['promo_selection'] != "None":
