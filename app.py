@@ -9,19 +9,17 @@ for key in ['autopay', 'military', 'joint_offer', 'tmp_multi', 'whole_office']:
     if key not in st.session_state:
         st.session_state[key] = False if key != 'tmp_multi' else "None"
 
-# --- PROMO CATALOG (Now with Logic Flags) ---
-# type: "DPP" (Device Payment), "BYOD", or "Any"
-# req_port: True (Must toggle Port-In), False (Works for Upgrades/New Numbers too)
+# --- PROMO CATALOG ---
 PROMO_CATALOG = {
     "Pro": [
-        {"name": "$1000 Off iPhone 16 Pro (Port-In)", "value": 1000.0, "term": 36, "type": "DPP", "req_port": True},
-        {"name": "$800 Off Galaxy S24 (Any)", "value": 800.0, "term": 36, "type": "DPP", "req_port": False},
-        {"name": "$540 BYOD Credit (Port-In)", "value": 540.0, "term": 36, "type": "BYOD", "req_port": True},
-        {"name": "$100 BYOD Upgrade", "value": 100.0, "term": 12, "type": "BYOD", "req_port": False}
+        {"name": "$1000 Off iPhone 16 Pro", "value": 1000.0, "term": 36, "type": "DPP", "req_port": True},
+        {"name": "$800 Off Galaxy S24", "value": 800.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$400 Off Pixel 9 Pro", "value": 400.0, "term": 36, "type": "DPP", "req_port": 36},
+        {"name": "$540 BYOD Credit", "value": 540.0, "term": 36, "type": "BYOD", "req_port": True}
     ],
     "Plus": [
-        {"name": "$830 Off iPhone 16 (Port-In)", "value": 830.0, "term": 36, "type": "DPP", "req_port": True},
-        {"name": "$400 Off Pixel 9 (Any)", "value": 400.0, "term": 36, "type": "DPP", "req_port": False},
+        {"name": "$830 Off iPhone 16", "value": 830.0, "term": 36, "type": "DPP", "req_port": True},
+        {"name": "$400 Off Pixel 9", "value": 400.0, "term": 36, "type": "DPP", "req_port": False},
         {"name": "$360 BYOD Credit", "value": 360.0, "term": 36, "type": "BYOD", "req_port": True}
     ],
     "Start": [
@@ -29,7 +27,7 @@ PROMO_CATALOG = {
         {"name": "$180 BYOD Credit", "value": 180.0, "term": 36, "type": "BYOD", "req_port": True}
     ],
     "Base": [
-        {"name": "Switcher BIC (One-Time)", "value": 200.0, "term": "One-Time", "type": "Any", "req_port": True}
+        {"name": "Switching Switcher (BIC)", "value": 200.0, "term": "One-Time", "type": "Any", "req_port": True}
     ]
 }
 
@@ -158,10 +156,8 @@ def get_totals():
                 cust_term = l.get('custom_promo_term', '36 Months')
                 term = "One-Time" if cust_term == "One-Time" else int(cust_term.split()[0])
             else:
-                # Iterate through all tiers to find the promo since it might be a Base promo on a Pro line
                 all_promos = []
                 for t in PROMO_CATALOG: all_promos.extend(PROMO_CATALOG[t])
-                
                 for p in all_promos:
                     if p['name'] == p_sel:
                         val = p['value']
@@ -283,21 +279,18 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
     for idx, l in enumerate(st.session_state.lines):
         data = l_info[idx]
         
-        # 1. PLAN BLOCK
         plan_txt = f"{l['plan']}: ${data['base']:.2f}"
         if data['port_in']: plan_txt += " (Port-In)"
         if data['ap_disc'] > 0: plan_txt += f"\nAutopay: -${data['ap_disc']:.2f}"
         if data['mil_disc'] > 0: plan_txt += f"\nMilitary: -${data['mil_disc']:.2f}"
         if data['intro_disc'] > 0: plan_txt += f"\nIntro: -${data['intro_disc']:.2f}"
         
-        # 2. DEVICE/PROMO BLOCK
         dev_txt = f"Dev Pmt: ${data['dev_pay']:.2f}"
         if data['byod']: dev_txt += " (BYOD)"
         if data['promo_val'] > 0 and data['promo_term'] != "One-Time":
             dev_txt += f"\nPromo: -${data['promo_credit']:.2f}"
             dev_txt += f"\n({data['promo_name'][:20]}..)"
         
-        # 3. FEAT/PROT BLOCK
         feat_txt = ""
         if data['extras_list']: feat_txt += "\n".join(data['extras_list'])
         if data['prot_list']:
@@ -305,7 +298,6 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
             feat_txt += "\n".join(data['prot_list'])
         if not feat_txt: feat_txt = "-"
 
-        # CALCULATE HEIGHT
         nb_plan = len(plan_txt.split('\n'))
         nb_dev = len(dev_txt.split('\n'))
         nb_feat = len(feat_txt.split('\n'))
@@ -313,7 +305,6 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
         row_height = max_lines * 4 
         if row_height < 8: row_height = 8
 
-        # PRINT ROW
         x_start = pdf.get_x()
         y_start = pdf.get_y()
         if y_start + row_height > 250:
@@ -342,7 +333,6 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
         
         pdf.set_xy(x_start, y_start + row_height)
 
-    # Account Level
     if acct_extras > 0:
         pdf.cell(160, 8, "Account Level Protection (Multi-Device / Whole Office)", 1, 0, 'L')
         pdf.cell(30, 8, f"${acct_extras:.2f}", 1, 1, 'R')
@@ -356,7 +346,6 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
     pdf.cell(160, 8, "Estimated Taxes, Surcharges and Fees (18%-42% of Base Plan)", 1, 0, 'L')
     pdf.cell(30, 8, f"${low_tax:.2f} - ${high_tax:.2f}", 1, 1, 'R')
 
-    # TOTAL ESTIMATED MONTHLY
     pdf.set_font("Helvetica", "B", 10)
     low_total = monthly_total + low_tax
     high_total = monthly_total + high_tax
@@ -400,7 +389,6 @@ if st.session_state.step == 1:
     num = st.number_input("Total devices/lines?", min_value=1, value=1)
     if st.button("Start Quote"):
         st.session_state.num_lines = num
-        # Initialize BYOD and Port-In to False
         st.session_state.lines = [{"type": "Smartphone", "plan": "My Biz", "features": [], "sp_features": [], "protection": "None", "vbis": "None", "dev_pay": 0.0, "intro_disc": False, "promo_selection": "None", "custom_promo_term": "36 Months", "byod": False, "port_in": False} for _ in range(num)]
         st.session_state.step = 2; st.rerun()
 
@@ -477,18 +465,13 @@ elif st.session_state.step == 4:
             st.markdown("---")
             st.caption(f"Available Promotions for {curr_tier} Tier")
             
-            # PROMO FILTERING LOGIC
+            # PROMO FILTERING
             tier_promos = PROMO_CATALOG.get(curr_tier, []) + PROMO_CATALOG.get("Base", [])
             valid_promos = []
-            
             for p in tier_promos:
-                # 1. Device Type Check
                 if l['byod'] and p.get('type') == 'DPP': continue
                 if not l['byod'] and p.get('type') == 'BYOD': continue
-                
-                # 2. Port Check
                 if p.get('req_port') and not l['port_in']: continue
-                
                 valid_promos.append(p['name'])
             
             promo_names = ["None"] + valid_promos + ["Custom"]
@@ -514,25 +497,25 @@ elif st.session_state.step == 5:
     with st.container(border=True):
         st.subheader("Sale Information")
         c1, c2, c3 = st.columns(3)
-        biz_name = c1.text_input("Business Name", "Business Name")
-        rep_name = c2.text_input("Sales Rep", "Sales Rep Name")
-        tax_rate = c3.number_input("Sales Tax (%)", value=6.75)
+        biz_name = c1.text_input("Business Name", "Business Name", key="biz_name")
+        rep_name = c2.text_input("Sales Rep", "Sales Rep Name", key="rep_name")
+        tax_rate = c3.number_input("Sales Tax (%)", value=6.75, key="tax_rate")
 
     with st.container(border=True):
         st.subheader("Due Today Calculator")
-        dev_retail = st.number_input("Total Device Retail Price ($)", min_value=0.0)
+        dev_retail = st.number_input("Total Device Retail Price ($)", min_value=0.0, key="dev_retail")
         c1, c2 = st.columns(2)
-        su_smart = c1.number_input("Smartphone Setup ($39.99)", min_value=0, step=1)
-        su_std = c2.number_input("Standard Setup ($29.99)", min_value=0, step=1)
+        su_smart = c1.number_input("Smartphone Setup ($39.99)", min_value=0, step=1, key="su_smart")
+        su_std = c2.number_input("Standard Setup ($29.99)", min_value=0, step=1, key="su_std")
         
         c3, c4 = st.columns(2)
-        bund_craft = c3.number_input("Crafted Bundle ($150)", min_value=0, step=1)
-        bund_ess = c4.number_input("Custom Essentials ($215)", min_value=0, step=1)
+        bund_craft = c3.number_input("Crafted Bundle ($150)", min_value=0, step=1, key="bund_craft")
+        bund_ess = c4.number_input("Custom Essentials ($215)", min_value=0, step=1, key="bund_ess")
         
         c5, c6, c7 = st.columns(3)
-        acc_screen = c5.number_input("Screen Prot ($66.99)", min_value=0, step=1)
-        acc_case = c6.number_input("Case ($56.99)", min_value=0, step=1)
-        acc_chg = c7.number_input("Charger ($36.99)", min_value=0, step=1)
+        acc_screen = c5.number_input("Screen Prot ($66.99)", min_value=0, step=1, key="acc_screen")
+        acc_case = c6.number_input("Case ($56.99)", min_value=0, step=1, key="acc_case")
+        acc_chg = c7.number_input("Charger ($36.99)", min_value=0, step=1, key="acc_chg")
         
         setup_cost = (su_smart * 39.99) + (su_std * 29.99)
         bundle_cost = (bund_craft * 150.0) + (bund_ess * 215.0)
@@ -552,12 +535,19 @@ elif st.session_state.step == 5:
     with st.container(border=True):
         st.subheader("First Bill / Credits")
         c1, c2 = st.columns(2)
-        act_fees = c1.number_input("Activation Fees ($40)", min_value=0) * 40.0
-        credits = c2.number_input("Bill Credits ($)", min_value=0.0)
+        act_fees = c1.number_input("Activation Fees ($40)", min_value=0, key="act_cnt") * 40.0
+        credits = c2.number_input("Bill Credits ($)", min_value=0.0, key="bill_cred")
         first_bill_data = {"act_fees": act_fees, "credits": credits}
 
+    # BUTTONS
+    c1, c2 = st.columns(2)
     _, m_total, ot_promos, _, _ = get_totals()
-    if st.button("Generate PDF Quote"):
+    
+    if c1.button("✏️ Edit Quote Details"):
+        st.session_state.step = 2
+        st.rerun()
+        
+    if c2.button("📄 Generate PDF Quote"):
         pdf_bytes = create_pro_pdf(biz_name, rep_name, due_today_data, m_total, first_bill_data, ot_promos)
         st.download_button("📥 Download PDF", data=bytes(pdf_bytes), file_name="quote.pdf", mime="application/pdf")
     
