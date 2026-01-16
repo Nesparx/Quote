@@ -40,7 +40,7 @@ PROMO_CATALOG = {
         {"name": "$699.99 Off Pixel 9 Series No Trade", "value": 699.99, "term": 36, "type": "DPP", "req_port": False}
     ],
     "Base": [
-        {"name": "$120 BYOD BYOD+", "value": 120.0, "term": 24, "type": "BYOD", "req_port": False},
+        {"name": "$120 BYOD BYOD+", "value": 120.0, "term": 24, "type": "BYOD", "req_port": False}, # FIXED: "24" -> 24
         {"name": "Pay Off Your Phone", "value": 800.0, "term": "One-Time", "type": "DPP", "req_port": True},
         {"name": "$415 Off iPhone 17 Series w/ Trade", "value": 415.0, "term": 36, "type": "DPP", "req_port": False},
         {"name": "$730 Off iPhone 16 Series w/ Trade", "value": 730.0, "term": 36, "type": "DPP", "req_port": False},
@@ -177,8 +177,10 @@ def get_totals():
                 cust_term = l.get('custom_promo_term', '36 Months')
                 term = "One-Time" if cust_term == "One-Time" else int(cust_term.split()[0])
             else:
+                # Search all catalogs to find promo
                 all_promos = []
                 for t in PROMO_CATALOG: all_promos.extend(PROMO_CATALOG[t])
+                
                 for p in all_promos:
                     if p['name'] == p_sel:
                         val = p['value']
@@ -455,13 +457,11 @@ elif st.session_state.step == 4:
         curr_tier = l_info[i]['tier']
         
         with st.expander(f"Line {i+1} ({l['plan']}) - {curr_tier} Tier", expanded=(i==0)):
-            # BYOD / Port-In Toggles
             c1, c2 = st.columns(2)
             l['byod'] = c1.toggle("Bring Your Own Device (BYOD)", key=f"byod_{i}")
             l['port_in'] = c2.toggle("Port-In Number", key=f"port_{i}")
             
             st.markdown("---")
-            
             if l['type'] == "Internet":
                 l['vbis'] = st.selectbox("Internet Security", list(VBIS_PROT.keys()), key=f"vbis_sel_{i}")
             else:
@@ -486,8 +486,11 @@ elif st.session_state.step == 4:
             st.markdown("---")
             st.caption(f"Available Promotions for {curr_tier} Tier")
             
-            # PROMO FILTERING
-            tier_promos = PROMO_CATALOG.get(curr_tier, []) + PROMO_CATALOG.get("Base", [])
+            # FILTER: Updated to prevent duplicates
+            tier_promos = PROMO_CATALOG.get(curr_tier, [])
+            if curr_tier != "Base": # Avoid duplicating base promos if already in Base tier
+                tier_promos = tier_promos + PROMO_CATALOG.get("Base", [])
+            
             valid_promos = []
             for p in tier_promos:
                 if l['byod'] and p.get('type') == 'DPP': continue
@@ -528,11 +531,9 @@ elif st.session_state.step == 5:
         c1, c2 = st.columns(2)
         su_smart = c1.number_input("Smartphone Setup ($39.99)", min_value=0, step=1, key="su_smart")
         su_std = c2.number_input("Standard Setup ($29.99)", min_value=0, step=1, key="su_std")
-        
         c3, c4 = st.columns(2)
         bund_craft = c3.number_input("Crafted Bundle ($150)", min_value=0, step=1, key="bund_craft")
         bund_ess = c4.number_input("Custom Essentials ($215)", min_value=0, step=1, key="bund_ess")
-        
         c5, c6, c7 = st.columns(3)
         acc_screen = c5.number_input("Screen Prot ($66.99)", min_value=0, step=1, key="acc_screen")
         acc_case = c6.number_input("Case ($56.99)", min_value=0, step=1, key="acc_case")
@@ -547,11 +548,7 @@ elif st.session_state.step == 5:
         total_today = tax_amt + setup_cost + bundle_cost + acc_cost
         
         st.success(f"**TOTAL DUE TODAY: ${total_today:,.2f}**")
-        due_today_data = {
-            "tax_rate": tax_rate, "tax_amt": tax_amt, 
-            "setup_cost": setup_cost, "bundle_cost": bundle_cost, "acc_cost": acc_cost,
-            "total": total_today
-        }
+        due_today_data = {"tax_rate": tax_rate, "tax_amt": tax_amt, "setup_cost": setup_cost, "bundle_cost": bundle_cost, "acc_cost": acc_cost, "total": total_today}
 
     with st.container(border=True):
         st.subheader("First Bill / Credits")
@@ -560,7 +557,6 @@ elif st.session_state.step == 5:
         credits = c2.number_input("Bill Credits ($)", min_value=0.0, key="bill_cred")
         first_bill_data = {"act_fees": act_fees, "credits": credits}
 
-    # BUTTONS
     c1, c2 = st.columns(2)
     _, m_total, ot_promos, _, _ = get_totals()
     
