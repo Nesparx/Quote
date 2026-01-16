@@ -169,6 +169,7 @@ def get_totals():
             "dev_pay": l.get('dev_pay', 0.0), "extras_list": feature_list,
             "prot_list": prot_list,
             "promo_credit": promo_credit, "promo_name": p_sel, "promo_term": term, "promo_val": val,
+            "byod": l.get('byod', False), "port_in": l.get('port_in', False),
             "total": total, "tier": tier
         })
         account_mrc += total
@@ -196,10 +197,9 @@ class ProfessionalQuote(FPDF):
         self.ln(20)
 
     def footer(self):
-        self.set_y(-35) # Expanded footer height for legal text
+        self.set_y(-35)
         self.set_font('Helvetica', 'I', 7)
         self.set_text_color(100, 100, 100)
-        
         disclaimer = (
             "Quotes are valid for 30 days or until the quote promotions end. End dates for promotions are not able "
             "to be disclosed to customers as they are subject to change or end at any point. "
@@ -208,7 +208,6 @@ class ProfessionalQuote(FPDF):
             "Pricing displayed assumes enrollment in Auto Pay (checking/debit) & Paper-Free billing. "
             "Final pricing and device financing are subject to credit approval."
         )
-        
         self.multi_cell(0, 3.5, disclaimer)
         self.cell(0, 8, f'Page {self.page_no()}', 0, 0, 'C')
 
@@ -277,20 +276,22 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
         
         # 1. PLAN BLOCK
         plan_txt = f"{l['plan']}: ${data['base']:.2f}"
+        if data['port_in']: plan_txt += " (Port-In)"
         if data['ap_disc'] > 0: plan_txt += f"\nAutopay: -${data['ap_disc']:.2f}"
         if data['mil_disc'] > 0: plan_txt += f"\nMilitary: -${data['mil_disc']:.2f}"
         if data['intro_disc'] > 0: plan_txt += f"\nIntro: -${data['intro_disc']:.2f}"
         
         # 2. DEVICE/PROMO BLOCK
         dev_txt = f"Dev Pmt: ${data['dev_pay']:.2f}"
+        if data['byod']: dev_txt += " (BYOD)"
+        
         if data['promo_val'] > 0 and data['promo_term'] != "One-Time":
             dev_txt += f"\nPromo: -${data['promo_credit']:.2f}"
             dev_txt += f"\n({data['promo_name'][:20]}..)"
         
         # 3. FEAT/PROT BLOCK
         feat_txt = ""
-        if data['extras_list']:
-            feat_txt += "\n".join(data['extras_list'])
+        if data['extras_list']: feat_txt += "\n".join(data['extras_list'])
         if data['prot_list']:
             if feat_txt: feat_txt += "\n"
             feat_txt += "\n".join(data['prot_list'])
@@ -392,7 +393,8 @@ if st.session_state.step == 1:
     num = st.number_input("Total devices/lines?", min_value=1, value=1)
     if st.button("Start Quote"):
         st.session_state.num_lines = num
-        st.session_state.lines = [{"type": "Smartphone", "plan": "My Biz", "features": [], "sp_features": [], "protection": "None", "vbis": "None", "dev_pay": 0.0, "intro_disc": False, "promo_selection": "None", "custom_promo_term": "36 Months"} for _ in range(num)]
+        # Initialize BYOD and Port-In to False
+        st.session_state.lines = [{"type": "Smartphone", "plan": "My Biz", "features": [], "sp_features": [], "protection": "None", "vbis": "None", "dev_pay": 0.0, "intro_disc": False, "promo_selection": "None", "custom_promo_term": "36 Months", "byod": False, "port_in": False} for _ in range(num)]
         st.session_state.step = 2; st.rerun()
 
 elif st.session_state.step == 2:
@@ -437,6 +439,13 @@ elif st.session_state.step == 4:
         curr_tier = l_info[i]['tier']
         
         with st.expander(f"Line {i+1} ({l['plan']}) - {curr_tier} Tier", expanded=(i==0)):
+            # BYOD / Port-In Toggles
+            c1, c2 = st.columns(2)
+            l['byod'] = c1.toggle("Bring Your Own Device (BYOD)", key=f"byod_{i}")
+            l['port_in'] = c2.toggle("Port-In Number", key=f"port_{i}")
+            
+            st.markdown("---")
+            
             if l['type'] == "Internet":
                 l['vbis'] = st.selectbox("Internet Security", list(VBIS_PROT.keys()), key=f"vbis_sel_{i}")
             else:
