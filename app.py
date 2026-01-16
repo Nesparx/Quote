@@ -196,11 +196,21 @@ class ProfessionalQuote(FPDF):
         self.ln(20)
 
     def footer(self):
-        self.set_y(-25)
-        self.set_font('Helvetica', 'I', 8)
-        self.set_text_color(128, 128, 128)
-        self.multi_cell(0, 4, "This quote is valid for 30 days. All pricing is subject to credit approval and agreement terms. Taxes and surcharges are estimates based on a percentage of the base plan price (18%-42%) and may vary by location. Monthly access fees are billed in advance.")
-        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+        self.set_y(-35) # Expanded footer height for legal text
+        self.set_font('Helvetica', 'I', 7)
+        self.set_text_color(100, 100, 100)
+        
+        disclaimer = (
+            "Quotes are valid for 30 days or until the quote promotions end. End dates for promotions are not able "
+            "to be disclosed to customers as they are subject to change or end at any point. "
+            "All prices included in this quote are subject to change due to local taxes, promotions, applicable fees, etc. "
+            "All prices are estimates only and only quotes provided through Verizon's Flex Quote system will be honored. "
+            "Pricing displayed assumes enrollment in Auto Pay (checking/debit) & Paper-Free billing. "
+            "Final pricing and device financing are subject to credit approval."
+        )
+        
+        self.multi_cell(0, 3.5, disclaimer)
+        self.cell(0, 8, f'Page {self.page_no()}', 0, 0, 'C')
 
 def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_data, ot_promos):
     pdf = ProfessionalQuote()
@@ -235,7 +245,7 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
         pdf.cell(150, 7, "Setup, Go & Service Charges", 1)
         pdf.cell(40, 7, f"${due_today_data['setup_cost']:,.2f}", 1, 1, 'R')
     if due_today_data['bundle_cost'] > 0:
-        pdf.cell(150, 7, "Accessory Bundles (Crafted / Essentials)", 1)
+        pdf.cell(150, 7, "Accessory Bundles", 1)
         pdf.cell(40, 7, f"${due_today_data['bundle_cost']:,.2f}", 1, 1, 'R')
     if due_today_data.get('acc_cost', 0) > 0:
         pdf.cell(150, 7, "Individual Accessories (Screen / Case / Charger)", 1)
