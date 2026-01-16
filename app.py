@@ -101,11 +101,10 @@ def get_totals():
         elif dtype == "Watch": base = WATCHES.get(plan, 0.0)
         else: base = OTHER.get(plan, 0.0)
 
-        # Apply Joint Offer to Base
+        # Joint Offer
         if st.session_state.joint_offer and dtype == "Internet" and plan in STANDARD_INTERNET:
             base -= 30.0
         
-        # Track base for tax calc (before discounts)
         total_base_plan_cost += base
 
         # Discounts
@@ -113,20 +112,17 @@ def get_totals():
         mil_disc = 5.0 if (st.session_state.military and dtype == "Smartphone") else 0.0
         intro_disc = (base * 0.15) if l.get('intro_disc') else 0.0
         
-        # Add-ons
+        # Add-ons List
         extras_cost = 0
         feature_list = []
-        
-        # Generic Features
         for f in l.get('features', []):
             cost = ADDONS[f]
             extras_cost += cost
-            feature_list.append(f"{f[:10]}..(${cost:.0f})")
-            
+            feature_list.append(f"{f} (${cost:.0f})")
         for f in l.get('sp_features', []):
             cost = SMARTPHONE_FEATURES[f]['price']
             extras_cost += cost
-            feature_list.append(f"{f[:10]}..(${cost:.0f})")
+            feature_list.append(f"{f} (${cost:.0f})")
 
         # Tier Logic
         if plan == "My Biz":
@@ -137,20 +133,20 @@ def get_totals():
         else:
             tier = SMARTPHONE_TIERS.get(plan, SMARTPHONE_STATIC.get(plan, {"tier": "Base"})).get('tier', 'Base')
 
-        # Protection
+        # Protection List
+        prot_list = []
         if dtype == "Internet":
             p_price = VBIS_PROT.get(l.get('vbis', 'None'), {"price": 0.0})['price']
-            p_name = l.get('vbis', 'None')
+            if p_price > 0: prot_list.append(f"{l.get('vbis')} (${p_price:.0f})")
         else:
             p_price = SINGLE_PROT.get(l.get('protection', 'None'), 0.0)
-            p_name = l.get('protection', 'None')
+            if p_price > 0: prot_list.append(f"{l.get('protection')} (${p_price:.0f})")
 
         # Promos
         promo_credit = 0
         p_sel = l.get('promo_selection', 'None')
         val = 0.0
         term = 36
-        
         if p_sel != "None":
             if p_sel == "Custom":
                 val = l.get('custom_promo_val', 0.0)
@@ -163,7 +159,6 @@ def get_totals():
                         val = p['value']
                         term = p['term']
                         break
-            
             if term == "One-Time": one_time_promo_total += val
             else: promo_credit = val / term
 
@@ -171,14 +166,13 @@ def get_totals():
         
         line_details.append({
             "base": base, "ap_disc": ap_disc, "mil_disc": mil_disc, "intro_disc": intro_disc,
-            "dev_pay": l.get('dev_pay', 0.0), "extras_cost": extras_cost, "extras_list": feature_list,
-            "prot_cost": p_price, "prot_name": p_name,
+            "dev_pay": l.get('dev_pay', 0.0), "extras_list": feature_list,
+            "prot_list": prot_list,
             "promo_credit": promo_credit, "promo_name": p_sel, "promo_term": term, "promo_val": val,
             "total": total, "tier": tier
         })
         account_mrc += total
 
-    # Account Level
     acct_extras = 0
     if st.session_state.tmp_multi != "None":
         m_price = next((item['price'] for item in MULTI_PROT_DATA if item['name'] == st.session_state.tmp_multi), 0)
@@ -195,7 +189,7 @@ class ProfessionalQuote(FPDF):
     def header(self):
         self.set_font('Helvetica', 'B', 20)
         self.set_text_color(0, 0, 0)
-        self.cell(0, 10, 'Verizon Business', ln=True) # Capitalized correctly
+        self.cell(0, 10, 'Verizon Business', ln=True)
         self.set_draw_color(205, 4, 11)
         self.set_line_width(0.5)
         self.line(10, 25, 200, 25)
@@ -205,7 +199,7 @@ class ProfessionalQuote(FPDF):
         self.set_y(-25)
         self.set_font('Helvetica', 'I', 8)
         self.set_text_color(128, 128, 128)
-        self.multi_cell(0, 4, "This quote is valid for 30 days. All pricing is subject to credit approval and agreement terms. Activation fees, taxes, and government surcharges are estimates and may vary by location. Monthly access fees are billed in advance. Early termination fees may apply.")
+        self.multi_cell(0, 4, "This quote is valid for 30 days. All pricing is subject to credit approval and agreement terms. Taxes and surcharges are estimates based on a percentage of the base plan price (18%-42%) and may vary by location. Monthly access fees are billed in advance.")
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
 def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill_data, ot_promos):
@@ -252,80 +246,118 @@ def create_pro_pdf(biz_name, rep_name, due_today_data, monthly_total, first_bill
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 8, "MONTHLY RECURRING CHARGES", 0, 1, 'L', fill=True)
     
-    # EXPANDED HEADERS
+    # NEW HEADERS (WIDER BOXES)
+    # Col Widths: # (10), Plan (45), Device/Promo (45), Features/Prot (60), Total (30) = 190
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_fill_color(220, 220, 220)
-    # Total Width = 190. 
-    # # (8), Plan (45), Dev(22), Promo(25), Feat(30), Prot(25), Tot(35)
-    pdf.cell(8, 8, "#", 1, 0, 'C', fill=True)
-    pdf.cell(45, 8, "Plan Breakdown", 1, 0, 'L', fill=True)
-    pdf.cell(22, 8, "Dev Pmt", 1, 0, 'C', fill=True)
-    pdf.cell(25, 8, "Promo/Crdt", 1, 0, 'C', fill=True)
-    pdf.cell(30, 8, "Feat/AddOns", 1, 0, 'L', fill=True)
-    pdf.cell(25, 8, "Protection", 1, 0, 'L', fill=True)
-    pdf.cell(35, 8, "Line Total", 1, 1, 'R', fill=True)
+    pdf.cell(10, 8, "#", 1, 0, 'C', fill=True)
+    pdf.cell(45, 8, "Plan Details", 1, 0, 'L', fill=True)
+    pdf.cell(45, 8, "Device & Promotions", 1, 0, 'L', fill=True)
+    pdf.cell(60, 8, "Features, Add-ons & Protection", 1, 0, 'L', fill=True)
+    pdf.cell(30, 8, "Line Total", 1, 1, 'R', fill=True)
     
-    pdf.set_font("Helvetica", "", 7) # Smaller font for detail
+    pdf.set_font("Helvetica", "", 7)
     l_info, _, _, base_total_for_tax, acct_extras = get_totals()
     
     for idx, l in enumerate(st.session_state.lines):
         data = l_info[idx]
         
-        # 1. PLAN DETAIL STRING
-        plan_str = f"{l['plan']} (${data['base']:.2f})"
-        if data['ap_disc'] > 0: plan_str += f"\n- ${data['ap_disc']:.0f} Autopay"
-        if data['mil_disc'] > 0: plan_str += f"\n- ${data['mil_disc']:.0f} Military"
-        if data['intro_disc'] > 0: plan_str += f"\n- ${data['intro_disc']:.2f} Intro"
+        # Build Text Blocks
+        # 1. PLAN BLOCK
+        plan_txt = f"{l['plan']}: ${data['base']:.2f}"
+        if data['ap_disc'] > 0: plan_txt += f"\nAutopay: -${data['ap_disc']:.2f}"
+        if data['mil_disc'] > 0: plan_txt += f"\nMilitary: -${data['mil_disc']:.2f}"
+        if data['intro_disc'] > 0: plan_txt += f"\nIntro: -${data['intro_disc']:.2f}"
         
-        # 2. PROMO STRING
+        # 2. DEVICE/PROMO BLOCK
+        dev_txt = f"Dev Pmt: ${data['dev_pay']:.2f}"
         if data['promo_val'] > 0 and data['promo_term'] != "One-Time":
-            promo_str = f"-${data['promo_credit']:.2f}"
-        else: promo_str = "-"
+            dev_txt += f"\nPromo: -${data['promo_credit']:.2f}"
+            dev_txt += f"\n({data['promo_name'][:20]}..)"
+        
+        # 3. FEAT/PROT BLOCK
+        feat_txt = ""
+        if data['extras_list']:
+            feat_txt += "\n".join(data['extras_list'])
+        if data['prot_list']:
+            if feat_txt: feat_txt += "\n"
+            feat_txt += "\n".join(data['prot_list'])
+        if not feat_txt: feat_txt = "-"
 
-        # 3. FEATURE STRING
-        feat_str = ", ".join(data['extras_list']) if data['extras_list'] else "-"
-        
-        # 4. PROT STRING
-        prot_str = f"{data['prot_name']} (${data['prot_cost']:.2f})" if data['prot_cost'] > 0 else "-"
+        # CALCULATE HEIGHT
+        # We simulate the height of the tallest cell
+        nb_plan = len(plan_txt.split('\n'))
+        nb_dev = len(dev_txt.split('\n'))
+        nb_feat = len(feat_txt.split('\n'))
+        max_lines = max(nb_plan, nb_dev, nb_feat)
+        row_height = max_lines * 4 # 4mm per line
+        if row_height < 8: row_height = 8 # Min height
 
-        # Render Row
-        # Use simple cells with abbreviated text to prevent breaking layout
-        # (Real MultiCell row alignment is complex in FPDF, using condensed strings)
-        pdf.cell(8, 8, str(idx+1), 1, 0, 'C')
+        # PRINT ROW (Using XY positioning for columns)
+        x_start = pdf.get_x()
+        y_start = pdf.get_y()
         
-        # Condense Plan String for single line
-        short_plan = f"{l['plan']} (${data['base']:.0f})"
-        if data['ap_disc']: short_plan += " -AP"
-        if data['mil_disc']: short_plan += " -Mil"
-        if data['intro_disc']: short_plan += " -Int"
+        # Check page break
+        if y_start + row_height > 250:
+            pdf.add_page()
+            y_start = pdf.get_y()
+            x_start = pdf.get_x()
+
+        # Col 1
+        pdf.rect(x_start, y_start, 10, row_height)
+        pdf.multi_cell(10, row_height, str(idx+1), 0, 'C')
         
-        pdf.cell(45, 8, short_plan, 1, 0, 'L')
-        pdf.cell(22, 8, f"${data['dev_pay']:.2f}", 1, 0, 'C')
-        pdf.cell(25, 8, promo_str, 1, 0, 'C')
-        pdf.cell(30, 8, feat_str[:22], 1, 0, 'L')
-        pdf.cell(25, 8, prot_str[:18], 1, 0, 'L')
-        pdf.cell(35, 8, f"${data['total']:.2f}", 1, 1, 'R')
+        # Col 2
+        pdf.set_xy(x_start + 10, y_start)
+        pdf.rect(x_start + 10, y_start, 45, row_height)
+        pdf.multi_cell(45, 4, plan_txt, 0, 'L')
+        
+        # Col 3
+        pdf.set_xy(x_start + 55, y_start)
+        pdf.rect(x_start + 55, y_start, 45, row_height)
+        pdf.multi_cell(45, 4, dev_txt, 0, 'L')
+        
+        # Col 4
+        pdf.set_xy(x_start + 100, y_start)
+        pdf.rect(x_start + 100, y_start, 60, row_height)
+        pdf.multi_cell(60, 4, feat_txt, 0, 'L')
+        
+        # Col 5
+        pdf.set_xy(x_start + 160, y_start)
+        pdf.rect(x_start + 160, y_start, 30, row_height)
+        pdf.multi_cell(30, row_height, f"${data['total']:.2f}", 0, 'R')
+        
+        # Move cursor to next row
+        pdf.set_xy(x_start, y_start + row_height)
 
     # Account Level
     if acct_extras > 0:
-        pdf.cell(155, 8, "Account Level Protection (Multi-Device / Whole Office)", 1, 0, 'L')
-        pdf.cell(35, 8, f"${acct_extras:.2f}", 1, 1, 'R')
+        pdf.cell(160, 8, "Account Level Protection (Multi-Device / Whole Office)", 1, 0, 'L')
+        pdf.cell(30, 8, f"${acct_extras:.2f}", 1, 1, 'R')
     
-    # TAX RANGE
+    econ = len(st.session_state.lines) * 2.98
+    pdf.cell(160, 8, "Economic Adjustment Charge", 1, 0, 'L')
+    pdf.cell(30, 8, f"${econ:.2f}", 1, 1, 'R')
+
+    # TAX RANGE LOGIC
     low_tax = base_total_for_tax * 0.18
     high_tax = base_total_for_tax * 0.42
-    pdf.cell(155, 8, f"Estimated Taxes, Surcharges and Fees (18%-42% of Base Plan)", 1, 0, 'L')
-    pdf.cell(35, 8, f"${low_tax:.2f} - ${high_tax:.2f}", 1, 1, 'R')
+    
+    pdf.cell(160, 8, "Estimated Taxes, Surcharges and Fees (18%-42% of Base Plan)", 1, 0, 'L')
+    pdf.cell(30, 8, f"${low_tax:.2f} - ${high_tax:.2f}", 1, 1, 'R')
 
+    # TOTAL ESTIMATED MONTHLY
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(155, 8, "TOTAL ESTIMATED MONTHLY", 1, 0, 'R')
-    pdf.cell(35, 8, f"${monthly_total:,.2f}", 1, 1, 'R')
+    low_total = monthly_total + low_tax
+    high_total = monthly_total + high_tax
+    pdf.cell(160, 8, "TOTAL ESTIMATED MONTHLY", 1, 0, 'R')
+    pdf.cell(30, 8, f"${low_total:,.2f} - ${high_total:,.2f}", 1, 1, 'R')
     pdf.ln(8)
 
     # --- 3. FIRST BILL ---
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_fill_color(240, 240, 240)
-    pdf.cell(0, 8, "FIRST BILL ONE TIME CHARGES AND CREDITS", 0, 1, 'L', fill=True) # Renamed
+    pdf.cell(0, 8, "FIRST BILL ONE TIME CHARGES AND CREDITS", 0, 1, 'L', fill=True)
     pdf.set_font("Helvetica", "", 9)
     
     if first_bill_data['act_fees'] > 0:
@@ -348,6 +380,7 @@ if st.session_state.step > 1:
             st.write(f"Line {i+1}: **${item['total']:.2f}** ({item['tier']})")
         st.divider()
         st.subheader(f"Monthly: ${a_total:,.2f}")
+        st.caption("+ Taxes (est. 18-42% of base)")
         if ot_promos > 0:
             st.caption(f"One-Time Credits: -${ot_promos:,.2f}")
 
@@ -402,7 +435,6 @@ elif st.session_state.step == 4:
         curr_tier = l_info[i]['tier']
         
         with st.expander(f"Line {i+1} ({l['plan']}) - {curr_tier} Tier", expanded=(i==0)):
-            # Protection
             if l['type'] == "Internet":
                 l['vbis'] = st.selectbox("Internet Security", list(VBIS_PROT.keys()), key=f"vbis_sel_{i}")
             else:
@@ -410,7 +442,6 @@ elif st.session_state.step == 4:
                     l['protection'] = st.selectbox("Protection", ["None"] + list(SINGLE_PROT.keys()), key=f"pr_sel_{i}")
                 else: st.caption("✅ Covered by Multi-Device Protection")
             
-            # Features
             if l['plan'] == "My Biz":
                 st.markdown("---")
                 st.caption("My Biz Add-ons")
@@ -425,7 +456,6 @@ elif st.session_state.step == 4:
                 if l['plan'] != "My Biz": avail_feats.append("VBMIS (Paid)")
                 l['sp_features'] = [f for f in avail_feats if st.checkbox(f"{f} (${SMARTPHONE_FEATURES[f]['price']})", key=f"sf_sel_{i}_{f}")]
             
-            # Promo
             st.markdown("---")
             st.caption(f"Available Promotions for {curr_tier} Tier")
             tier_promos = PROMO_CATALOG.get(curr_tier, []) + PROMO_CATALOG.get("Base", [])
